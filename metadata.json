@@ -1,0 +1,8 @@
+{
+  "name": "School Portal & Management System",
+  "description": "Comprehensive school web portal with a public information website, admissions, and role-based dashboards (Admin, Teachers, Students/Parents) for attendance, mark entry, fees, and syllabus tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
