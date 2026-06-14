@@ -32,6 +32,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { getAnnouncements, getSyllabus, getTeachers } from '../lib/schoolStorage';
 import { SyllabusItem } from '../types';
+import SchoolLogo from './SchoolLogo';
 // @ts-ignore
 import recreationalTurfImg from '../assets/images/recreational_turf_1781332683926.jpg';
 // @ts-ignore
@@ -589,9 +590,7 @@ export default function PublicWebsite({ onLoginClick }: PublicWebsiteProps) {
           
           {/* Logo Brand */}
           <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setActiveSection('home')} id="nav-brand">
-            <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white font-display font-black text-lg shadow-md border border-slate-800 group-hover:rotate-6 transition-transform">
-              CD
-            </div>
+            <SchoolLogo className="w-12 h-12 shadow-sm drop-shadow-xs hover:scale-105 transition-transform" />
             <div>
               <h1 className="text-xl font-bold text-slate-900 tracking-tight font-display">CHAKRAPANI DAS PUBLIC SCHOOL JALAH</h1>
               <p className="text-[10px] text-slate-400 font-mono tracking-wider uppercase">Inspiring Excellence, Nurturing character</p>
@@ -2363,8 +2362,12 @@ export default function PublicWebsite({ onLoginClick }: PublicWebsiteProps) {
                               <option value="LKG">LKG (Lower Kindergarten)</option>
                               <option value="UKG">UKG (Upper Kindergarten)</option>
                               <option value="Class-I">Class I (Primary Division)</option>
+                              <option value="Class-II">Class II (Primary Division)</option>
                               <option value="Class-III">Class III (Primary Division)</option>
+                              <option value="Class-IV">Class IV (Primary Division)</option>
                               <option value="Class-V">Class V (Primary Division)</option>
+                              <option value="Class-VI">Class VI (Secondary Division)</option>
+                              <option value="Class-VII">Class VII (Secondary Division)</option>
                               <option value="Class-VIII">Class VIII (Secondary Division)</option>
                               <option value="Class-IX">Class IX (Secondary Division)</option>
                               <option value="Class-X">Class X (Secondary Board)</option>
@@ -2591,7 +2594,10 @@ export default function PublicWebsite({ onLoginClick }: PublicWebsiteProps) {
       <footer className="bg-slate-900 text-slate-400 py-12 border-t border-slate-800" id="public-footer">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="space-y-4">
-            <h4 className="text-white text-lg font-bold">Chakrapani Das Public School Jalah</h4>
+            <div className="flex items-center gap-3">
+              <SchoolLogo className="w-14 h-14 bg-white/5 rounded-2xl p-1.5 border border-white/10 shrink-0 shadow-inner" />
+              <h4 className="text-white text-base font-bold leading-tight">Chakrapani Das Public School Jalah</h4>
+            </div>
             <p className="text-xs text-slate-450 leading-relaxed">
               Serving our community since 2004 with world-class standard curriculum models, modern laboratories, and complete developmental care matrices.
             </p>

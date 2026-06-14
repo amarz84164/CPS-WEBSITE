@@ -17,7 +17,13 @@ import {
   ClipboardList,
   Sparkles,
   Download,
-  Upload
+  Upload,
+  Check,
+  X,
+  Users,
+  Percent,
+  List,
+  LayoutGrid
 } from 'lucide-react';
 import { 
   getStudents, 
@@ -103,6 +109,8 @@ export default function TeacherDashboard({ teacherId, onLogout }: TeacherDashboa
   });
 
   const [attendanceSavedMsg, setAttendanceSavedMsg] = useState(false);
+  const [attendanceView, setAttendanceView] = useState<'table' | 'cards'>('cards');
+  const [attendanceSearch, setAttendanceSearch] = useState('');
 
   // Sync state when Class or Date changes
   React.useEffect(() => {
@@ -353,104 +361,340 @@ export default function TeacherDashboard({ teacherId, onLogout }: TeacherDashboa
         <main className="lg:col-span-9 bg-white border border-slate-200 p-6 rounded-3xl shadow-sm min-h-[500px]" id="teacher-inner-workspace">
           
           {/* ============ TAB 1: ROLL-CALL ATTENDANCE MARKER ============ */}
-          {activeTab === 'attendance' && (
-            <div className="space-y-6" id="view-teacher-attendance">
-              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900 flex items-center gap-1.5">
-                    Daily Attendance marking <ClipboardList className="w-5 h-5 text-indigo-650" />
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Choose target Class, select logging date, and toggle students' status indicators.</p>
+          {activeTab === 'attendance' && (() => {
+            const filteredStudents = studentsInClass.filter(s => 
+              s.name.toLowerCase().includes(attendanceSearch.toLowerCase()) || 
+              (s.rollNo && s.rollNo.toString().includes(attendanceSearch)) || 
+              s.admissionNo.toLowerCase().includes(attendanceSearch.toLowerCase())
+            );
+            
+            const presentCount = Object.keys(classAttendance).filter(id => {
+              const belongs = studentsInClass.some(s => s.id === id);
+              return belongs && classAttendance[id] === 'Present';
+            }).length;
+
+            const absentCount = Object.keys(classAttendance).filter(id => {
+              const belongs = studentsInClass.some(s => s.id === id);
+              return belongs && classAttendance[id] === 'Absent';
+            }).length;
+
+            const attendancePercent = studentsInClass.length 
+              ? Math.round((presentCount / studentsInClass.length) * 100) 
+              : 0;
+
+            return (
+              <div className="space-y-6" id="view-teacher-attendance">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900 flex items-center gap-1.5">
+                      Daily Attendance roll-call <ClipboardList className="w-5 h-5 text-indigo-650" />
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">Mark present/absent logs, search students, and save daily rosters.</p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-slate-500 font-sans">Date:</span>
+                      <input 
+                        type="date"
+                        value={attendanceDate}
+                        onChange={(e) => setAttendanceDate(e.target.value)}
+                        className="p-1 px-3 border border-slate-200 rounded-lg text-xs bg-slate-50 font-bold outline-none cursor-pointer text-slate-800"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-500 font-sans">Date:</span>
-                  <input 
-                    type="date"
-                    value={attendanceDate}
-                    onChange={(e) => setAttendanceDate(e.target.value)}
-                    className="p-1 px-3 border border-slate-200 rounded-lg text-xs bg-slate-50 outline-none"
-                  />
-                </div>
-              </div>
+                {attendanceSavedMsg && (
+                  <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-150 rounded-xl text-xs font-semibold flex items-center gap-2 animate-pulse">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                    Attendance registry for standard {selectedClass} logged successfully on date {attendanceDate}!
+                  </div>
+                )}
 
-              {attendanceSavedMsg && (
-                <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-150 rounded-xl text-xs font-semibold">
-                  Attendance logs registered successfully in local data blocks for date {attendanceDate}!
+                {/* INTERACTIVE ASSIGNED CLASS REGISTERS */}
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider font-mono">Assigned Daily Roll-Call Registers:</span>
+                    <span className="text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.5 font-bold font-mono">Select register to load students</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {classesTaught.map(cls => {
+                      const isActive = selectedClass === cls;
+                      const classStudents = allStudents.filter(s => s.classId === cls);
+                      return (
+                        <button
+                          type="button"
+                          key={cls}
+                          onClick={() => setSelectedClass(cls)}
+                          className={`p-3 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between ${
+                            isActive 
+                              ? 'bg-indigo-650 border-indigo-700 text-white shadow-sm shadow-indigo-150 scale-[1.01]' 
+                              : 'bg-white border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/10 text-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className={`text-xs font-black tracking-tight ${isActive ? 'text-white' : 'text-slate-950'}`}>{cls} Standard</span>
+                            <span className={`text-[9.5px] px-1.5 py-0.2 rounded font-mono font-bold ${isActive ? 'bg-indigo-700/60 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                              {classStudents.length} enrolled
+                            </span>
+                          </div>
+                          <span className={`text-[10px] font-semibold mt-1.5 ${isActive ? 'text-white/80' : 'text-slate-400'}`}>
+                            {isActive ? '● Loaded Daily Checklist' : 'Load Class Roll-Call'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
 
-              {/* Attendance Table Checklist */}
-              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold">
-                      <th className="p-3">Roll No</th>
-                      <th className="p-3">Admission ID</th>
-                      <th className="p-3">Student Name</th>
-                      <th className="p-3">Guardian Name</th>
-                      <th className="p-3 text-center">Roster Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {studentsInClass.length > 0 ? (
-                      studentsInClass.map(student => {
+                {/* METRICS & QUICK BULK CONTROLS */}
+                {studentsInClass.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {/* Counters card */}
+                    <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 shadow-xs flex flex-col justify-between">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono">Present / Absent Split</span>
+                      <div className="grid grid-cols-3 gap-2 mt-2 text-center">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-semibold">Enrolled</span>
+                          <span className="text-base font-black">{studentsInClass.length}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-emerald-400 block font-semibold">Present</span>
+                          <span className="text-base font-black text-emerald-400">{presentCount}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-rose-400 block font-semibold">Absent</span>
+                          <span className="text-base font-black text-rose-400">{absentCount}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Attendance percentage indicator card */}
+                    <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-xs flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono block">Roster Ratio</span>
+                        <span className="text-2xl font-black text-slate-900 tracking-tight block">
+                          {attendancePercent}%
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-medium block">Ratio present on {attendanceDate}</span>
+                      </div>
+                      <div className="w-10 h-10 rounded-full border-4 border-emerald-500/20 border-t-emerald-500 flex items-center justify-center font-bold text-[10px] text-emerald-800 font-mono">
+                        {attendancePercent}%
+                      </div>
+                    </div>
+
+                    {/* Bulk controls card */}
+                    <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-xs flex flex-col justify-center space-y-2">
+                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest font-mono block">Speed Roll-Call Shortcuts</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allPr: { [studentId: string]: 'Present' | 'Absent' } = {};
+                            studentsInClass.forEach(s => { allPr[s.id] = 'Present'; });
+                            setClassAttendance(allPr);
+                          }}
+                          className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-250 text-[10px] font-bold py-1.5 px-2 rounded-lg text-center cursor-pointer flex items-center justify-center gap-1 transition-all"
+                        >
+                          <Check className="w-3.5 h-3.5" /> All Present
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allAb: { [studentId: string]: 'Present' | 'Absent' } = {};
+                            studentsInClass.forEach(s => { allAb[s.id] = 'Absent'; });
+                            setClassAttendance(allAb);
+                          }}
+                          className="bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-250 text-[10px] font-bold py-1.5 px-2 rounded-lg text-center cursor-pointer flex items-center justify-center gap-1 transition-all"
+                        >
+                          <X className="w-3.5 h-3.5" /> All Absent
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* FILTER SEARCH & VIEW MODE SWITCHER */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="relative w-full sm:max-w-xs">
+                    <input 
+                      type="text"
+                      placeholder="Search student by name, roll, or ID..."
+                      value={attendanceSearch}
+                      onChange={(e) => setAttendanceSearch(e.target.value)}
+                      className="w-full text-xs p-2.5 pl-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white outline-none focus:ring-1 focus:ring-indigo-550 text-slate-800 font-medium"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200/80">
+                    <button
+                      type="button"
+                      onClick={() => setAttendanceView('cards')}
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer transition-all flex items-center gap-1 ${
+                        attendanceView === 'cards' 
+                          ? 'bg-white text-slate-900 shadow-sm' 
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5" /> Grid Cards
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAttendanceView('table')}
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer transition-all flex items-center gap-1 ${
+                        attendanceView === 'table' 
+                          ? 'bg-white text-slate-900 shadow-sm' 
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      <List className="w-3.5 h-3.5" /> List Table
+                    </button>
+                  </div>
+                </div>
+
+                {/* RENDER GRID MODE */}
+                {attendanceView === 'cards' ? (
+                  filteredStudents.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {filteredStudents.map(student => {
                         const status = classAttendance[student.id] || 'Present';
                         const isPresent = status === 'Present';
                         return (
-                          <tr key={student.id} className="hover:bg-slate-50/50">
-                            <td className="p-3 font-mono font-bold text-slate-400">{student.rollNo}</td>
-                            <td className="p-3 font-mono text-slate-500">{student.admissionNo}</td>
-                            <td className="p-3 font-bold text-slate-850 flex items-center gap-2">
-                              {student.photoUrl && (
+                          <div 
+                            key={student.id} 
+                            onClick={() => toggleStudentAttendance(student.id)}
+                            className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
+                              isPresent 
+                                ? 'bg-emerald-50/20 border-emerald-250 hover:bg-emerald-50/40' 
+                                : 'bg-rose-50/20 border-rose-250 hover:bg-rose-50/40'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              {student.photoUrl ? (
                                 <img 
                                   src={student.photoUrl} 
                                   alt={student.name} 
                                   referrerPolicy="no-referrer" 
-                                  className="w-7 h-7 rounded-lg object-cover border border-slate-200"
+                                  className="w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0"
                                 />
+                              ) : (
+                                <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 border border-slate-200">
+                                  <User className="w-6 h-6 text-slate-400" />
+                                </div>
                               )}
-                              <span>{student.name}</span>
-                            </td>
-                            <td className="p-3 text-slate-550">{student.guardianName}</td>
-                            <td className="p-3 text-center">
-                              <button
-                                type="button"
-                                onClick={() => toggleStudentAttendance(student.id)}
-                                className={`px-4.5 py-1.5 rounded-xl font-bold text-xs border cursor-pointer transition-all ${
-                                  isPresent 
-                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800 shadow-sm' 
-                                    : 'bg-rose-50 border-rose-200 text-rose-800 shadow-sm'
-                                }`}
-                              >
-                                {isPresent ? '● Present' : '○ Absent'}
-                              </button>
-                            </td>
-                          </tr>
+                              
+                              <div className="space-y-0.5">
+                                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-mono">
+                                  Roll {student.rollNo} • {student.admissionNo}
+                                </span>
+                                <h4 className="text-sm font-black text-slate-900 leading-tight">{student.name}</h4>
+                                <p className="text-[10px] text-slate-500">Guard: {student.guardianName}</p>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 pt-3 border-t border-dotted border-slate-200/80 flex items-center justify-between">
+                              <span className="text-[11px] font-semibold text-slate-450">
+                                Tap card to toggle
+                              </span>
+                              
+                              <span className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold flex items-center gap-1 ${
+                                isPresent 
+                                  ? 'bg-emerald-100 text-emerald-800' 
+                                  : 'bg-rose-100 text-rose-800'
+                              }`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${isPresent ? 'bg-emerald-600' : 'bg-rose-600'}`}></span>
+                                {isPresent ? 'Present' : 'Absent'}
+                              </span>
+                            </div>
+                          </div>
                         );
-                      })
-                    ) : (
-                      <tr>
-                        <td colSpan={5} className="p-6 text-center text-slate-400 font-semibold">No students registered in this school class standard.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-10 text-center border border-dashed border-slate-200 rounded-2xl bg-slate-50 text-slate-400 font-semibold">
+                      No matching students found in this roster register.
+                    </div>
+                  )
+                ) : (
+                  /* RENDER TABLE MODE */
+                  <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold">
+                          <th className="p-3">Roll No</th>
+                          <th className="p-3">Admission ID</th>
+                          <th className="p-3">Student Name</th>
+                          <th className="p-3">Guardian Name</th>
+                          <th className="p-3 text-center">Roster Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredStudents.length > 0 ? (
+                          filteredStudents.map(student => {
+                            const status = classAttendance[student.id] || 'Present';
+                            const isPresent = status === 'Present';
+                            return (
+                              <tr key={student.id} className="hover:bg-slate-50/50">
+                                <td className="p-3 font-mono font-bold text-slate-400">{student.rollNo}</td>
+                                <td className="p-3 font-mono text-slate-500">{student.admissionNo}</td>
+                                <td className="p-3 font-bold text-slate-850 flex items-center gap-2">
+                                  {student.photoUrl ? (
+                                    <img 
+                                      src={student.photoUrl} 
+                                      alt={student.name} 
+                                      referrerPolicy="no-referrer" 
+                                      className="w-7 h-7 rounded-lg object-cover border border-slate-200"
+                                    />
+                                  ) : (
+                                    <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center border border-slate-200 shrink-0">
+                                      <User className="w-4 h-4 text-slate-400" />
+                                    </div>
+                                  )}
+                                  <span>{student.name}</span>
+                                </td>
+                                <td className="p-3 text-slate-550">{student.guardianName}</td>
+                                <td className="p-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleStudentAttendance(student.id)}
+                                    className={`px-4 py-1.5 rounded-xl font-bold text-[10px] uppercase border cursor-pointer tracking-wider transition-all inline-flex items-center gap-1 ${
+                                      isPresent 
+                                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800 shadow-sm' 
+                                        : 'bg-rose-50 border-rose-200 text-rose-800 shadow-sm'
+                                    }`}
+                                  >
+                                    <span className={`w-1.5 h-1.5 rounded-full ${isPresent ? 'bg-emerald-600' : 'bg-rose-600'}`}></span>
+                                    {isPresent ? 'Present' : 'Absent'}
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="p-6 text-center text-slate-400 font-semibold">No students discovered on this section index.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {studentsInClass.length > 0 && (
+                  <div className="flex justify-end pt-2">
+                    <button
+                      onClick={handleSaveAttendance}
+                      className="bg-indigo-650 hover:bg-indigo-700 text-white font-bold text-xs py-2.5 px-6 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-sm transition-all hover:scale-[1.01]"
+                    >
+                      <Save className="w-4 h-4" /> Save Daily Attendance Sheet
+                    </button>
+                  </div>
+                )}
               </div>
-
-              {studentsInClass.length > 0 && (
-                <div className="flex justify-end pt-2">
-                  <button
-                    onClick={handleSaveAttendance}
-                    className="bg-indigo-650 hover:bg-indigo-700 text-white font-bold text-xs py-2.5 px-6 rounded-xl flex items-center gap-1.5 cursor-pointer shadow"
-                  >
-                    <Save className="w-4 h-4" /> Save Daily Attendance Sheet
-                  </button>
-                </div>
-              )}
-
-            </div>
-          )}
+            );
+          })()}
 
           {/* ============ TAB 2: EXAM MARKS ENTRY WORKSPACE ============ */}
           {activeTab === 'marks' && (
@@ -464,26 +708,100 @@ export default function TeacherDashboard({ teacherId, onLogout }: TeacherDashboa
                 </div>
 
                 <div className="flex flex-wrap gap-2 text-xs">
-                  <select 
-                    value={selectedExam}
-                    onChange={(e) => setSelectedExam(e.target.value as ExamType)}
-                    className="p-1 px-3 border border-slate-200 bg-slate-55 rounded-lg outline-none font-sans font-bold"
-                  >
-                    <option value="FA-I">FA-I (Formative I - Max 25)</option>
-                    <option value="FA-II">FA-II (Formative II - Max 25)</option>
-                    <option value="SA-I">SA-I (Summative I - Max 100)</option>
-                    <option value="SA-II">SA-II (Summative II - Max 100)</option>
-                  </select>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[11px] font-bold text-slate-500">Class:</span>
+                    <select 
+                      value={selectedClass}
+                      onChange={(e) => setSelectedClass(e.target.value)}
+                      className="p-1 px-2.5 border border-slate-200 bg-white hover:bg-slate-50 rounded-lg outline-none font-sans font-bold cursor-pointer"
+                    >
+                      {classesTaught.map(cls => (
+                        <option key={cls} value={cls}>{cls} Std</option>
+                      ))}
+                    </select>
+                  </div>
 
-                  <select 
-                    value={selectedSubject}
-                    onChange={(e) => setSelectedSubject(e.target.value)}
-                    className="p-1 px-3 border border-slate-200 bg-slate-55 rounded-lg outline-none font-sans font-bold"
-                  >
-                    {currentTeacher.subjects.map(sub => (
-                      <option key={sub} value={sub}>{sub}</option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[11px] font-bold text-slate-500">Subject:</span>
+                    <select 
+                      value={selectedSubject}
+                      onChange={(e) => setSelectedSubject(e.target.value)}
+                      className="p-1 px-2.5 border border-slate-200 bg-white hover:bg-slate-50 rounded-lg outline-none font-sans font-bold cursor-pointer"
+                    >
+                      {currentTeacher.subjects.map(sub => (
+                        <option key={sub} value={sub}>{sub}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <span className="text-[11px] font-bold text-slate-500">Exam:</span>
+                    <select 
+                      value={selectedExam}
+                      onChange={(e) => setSelectedExam(e.target.value as ExamType)}
+                      className="p-1 px-2.5 border border-slate-200 bg-white hover:bg-slate-50 rounded-lg outline-none font-sans font-bold cursor-pointer"
+                    >
+                      <option value="FA-I">FA-I (Max 25)</option>
+                      <option value="FA-II">FA-II (Max 25)</option>
+                      <option value="SA-I">SA-I (Max 100)</option>
+                      <option value="SA-II">SA-II (Max 100)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* INTERACTIVE ASSIGNED CLASS & SUBJECT MATRIX */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider font-mono">Your Assigned teaching courses matrix:</span>
+                  <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-100 rounded px-1.5 py-0.5 font-bold font-mono">Verified Assignments Only</span>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                  {classesTaught.flatMap(cls => 
+                    currentTeacher.subjects.map(sub => {
+                      const isActive = selectedClass === cls && selectedSubject === sub;
+                      return (
+                        <button
+                          type="button"
+                          key={`${cls}-${sub}`}
+                          onClick={() => {
+                            setSelectedClass(cls);
+                            setSelectedSubject(sub);
+                          }}
+                          className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between ${
+                            isActive 
+                              ? 'bg-indigo-650 border-indigo-700 text-white shadow-sm shadow-indigo-150 scale-[1.01]' 
+                              : 'bg-white border-slate-200/85 hover:border-indigo-400 hover:bg-indigo-50/10 text-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className={`text-xs font-black tracking-tight ${isActive ? 'text-white' : 'text-slate-950'}`}>{cls} Standard</span>
+                            <span className={`text-[9.5px] px-1.5 py-0.2 rounded font-bold font-mono ${isActive ? 'bg-indigo-700/60 text-white' : 'bg-slate-100 text-slate-500'}`}>Assigned</span>
+                          </div>
+                          <span className={`text-[11px] font-bold mt-1 ${isActive ? 'text-white/90' : 'text-indigo-650'}`}>{sub}</span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* ACTIVE GRADING STATE BADGE PANEL */}
+              <div className="bg-indigo-50/40 border border-indigo-100/60 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between shadow-xs">
+                <div>
+                  <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-mono">Active Assessment Register</h4>
+                  <div className="text-sm font-black text-slate-900 mt-1 flex items-center gap-1.5">
+                    <span className="bg-indigo-650 text-white px-2 py-0.5 rounded text-[11px] font-mono">{selectedClass}</span>
+                    <span className="text-slate-300">/</span>
+                    <span className="bg-emerald-600 text-white px-2 py-0.5 rounded text-[11px] font-mono">{selectedSubject}</span>
+                    <span className="text-slate-300">/</span>
+                    <span className="text-slate-700 font-sans">{selectedExam} Term</span>
+                  </div>
+                </div>
+                
+                <div className="text-[11px] text-slate-500 font-medium max-w-sm mt-2 sm:mt-0 italic sm:text-right">
+                  Now displaying <span className="font-extrabold text-slate-800">{studentsInClass.length}</span> students enrolled in {selectedClass}. Change selections above to grades other courses.
                 </div>
               </div>
 

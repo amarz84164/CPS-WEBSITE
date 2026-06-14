@@ -4,10 +4,11 @@
  */
 
 import React, { useState } from 'react';
-import { ShieldCheck, User, Lock, ArrowLeft, ArrowRight, BookOpen, Sparkles, Upload, FileCheck, CheckCircle } from 'lucide-react';
+import { ShieldCheck, User, Lock, ArrowLeft, ArrowRight, BookOpen, Sparkles, Upload, FileCheck, CheckCircle, ChevronDown, ChevronUp, Key, ShieldAlert } from 'lucide-react';
 import { motion } from 'motion/react';
 import { UserRole, Teacher } from '../types';
 import { getTeachers, getStudents, addTeacher } from '../lib/schoolStorage';
+import SchoolLogo from './SchoolLogo';
 
 interface LoginPortalProps {
   onBackToWeb: () => void;
@@ -20,6 +21,7 @@ export default function LoginPortal({ onBackToWeb, onLoginSuccess }: LoginPortal
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [showAccountsDir, setShowAccountsDir] = useState(false);
   
   // Registration States
   const [isRegisterMode, setIsRegisterMode] = useState(false);
@@ -39,6 +41,40 @@ export default function LoginPortal({ onBackToWeb, onLoginSuccess }: LoginPortal
   const teachers = getTeachers();
   const students = getStudents();
 
+  // Robust finder to match student by ID, Admission Number, Phone or Username
+  const findStudent = (inputVal: string) => {
+    const cleanInput = inputVal.trim().toLowerCase();
+    const normalize = (num: string) => num.replace(/[^0-9]/g, '');
+    const inputNormalized = normalize(cleanInput);
+
+    return students.find(s => {
+      // 1. ID matching (case insensitive)
+      const idMatch = s.id.toLowerCase() === cleanInput;
+      
+      // 2. Admission Number matching (case insensitive)
+      const admissionMatch = s.admissionNo.toLowerCase() === cleanInput;
+      
+      // 3. Username matching (case insensitive)
+      const usernameMatch = s.username.toLowerCase() === cleanInput;
+      
+      // 4. Raw phone match
+      const rawPhoneMatch = s.phone.toLowerCase() === cleanInput;
+
+      // 5. Phone matching with digit normalization
+      let phoneMatch = false;
+      if (inputNormalized) {
+        const studentNormalized = normalize(s.phone);
+        phoneMatch = studentNormalized && (
+          studentNormalized === inputNormalized || 
+          studentNormalized.endsWith(inputNormalized) || 
+          inputNormalized.endsWith(studentNormalized)
+        );
+      }
+
+      return idMatch || admissionMatch || usernameMatch || rawPhoneMatch || phoneMatch;
+    });
+  };
+
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
@@ -51,21 +87,41 @@ export default function LoginPortal({ onBackToWeb, onLoginSuccess }: LoginPortal
         setErrorMsg('Invalid root administrator credentials. Try username "admin", password "admin"');
       }
     } else if (selectedTab === 'teacher') {
-      const match = teachers.find(t => t.username.toLowerCase() === username.trim().toLowerCase());
-      const expectedPassword = match?.password || 'teacher';
-      if (match && password === expectedPassword) {
-        onLoginSuccess('teacher', match.id);
-      } else {
-        setErrorMsg('Invalid teacher credentials. For your registered teacher account, use your set password.');
+      const inputVal = username.trim().toLowerCase();
+      const enteredPass = password.trim().toLowerCase();
+      const match = teachers.find(t => 
+        t.username.toLowerCase() === inputVal || 
+        t.id.toLowerCase() === inputVal ||
+        (t.empNo && t.empNo.toLowerCase() === inputVal)
+      );
+      if (match) {
+        const expectedId = match.id.toLowerCase();
+        const expectedEmpNo = (match.empNo || '').toLowerCase();
+        const expectedPassword = (match.password || '').toLowerCase();
+        
+        if (enteredPass === expectedPassword || enteredPass === expectedId || enteredPass === expectedEmpNo) {
+          onLoginSuccess('teacher', match.id);
+          return;
+        }
       }
+      setErrorMsg('Invalid teacher credentials. Try signing in with either your Username or Teacher ID (e.g. "T01") and your registered password.');
     } else if (selectedTab === 'student') {
-      const match = students.find(s => s.username.toLowerCase() === username.trim().toLowerCase());
-      const expectedPassword = match?.password || 'student';
-      if (match && password === expectedPassword) {
-        onLoginSuccess('student', match.id);
-      } else {
-        setErrorMsg('Invalid student/parent credentials. For demo try username "student1", password "student"');
+      const inputVal = username.trim();
+      const enteredPass = password.trim().toLowerCase();
+
+      const match = findStudent(inputVal);
+
+      if (match) {
+        const expectedId = match.id.toLowerCase();
+        const expectedAdmissionNo = match.admissionNo.toLowerCase();
+        const expectedPassword = (match.password || '').toLowerCase(); // fallback
+
+        if (enteredPass === expectedId || enteredPass === expectedAdmissionNo || enteredPass === expectedPassword) {
+          onLoginSuccess('student', match.id);
+          return;
+        }
       }
+      setErrorMsg('Invalid credentials. Student/Parent can sign in with their registered Phone Number, Student ID (e.g. "S08") or Username, and password/ID.');
     }
   };
 
@@ -150,10 +206,14 @@ export default function LoginPortal({ onBackToWeb, onLoginSuccess }: LoginPortal
     setTimeout(() => {
       if (role === 'admin') onLoginSuccess('admin', 'admin_root');
       else if (role === 'teacher') {
-        const found = teachers.find(t => t.username === user) || teachers[0];
+        const found = teachers.find(t => 
+          t.username.toLowerCase() === user.trim().toLowerCase() ||
+          t.id.toLowerCase() === user.trim().toLowerCase() ||
+          (t.empNo && t.empNo.toLowerCase() === user.trim().toLowerCase())
+        ) || teachers[0];
         onLoginSuccess('teacher', found.id);
       } else if (role === 'student') {
-        const found = students.find(s => s.username === user) || students[0];
+        const found = findStudent(user) || students[0];
         onLoginSuccess('student', found.id);
       }
     }, 400);
@@ -181,9 +241,7 @@ export default function LoginPortal({ onBackToWeb, onLoginSuccess }: LoginPortal
         {/* Left Side branding details */}
         <div className="md:col-span-5 text-white space-y-6 hidden md:block">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-[#800000] font-display font-black text-lg shadow-md border border-red-900/10">
-              CD
-            </div>
+            <SchoolLogo className="w-12 h-12 drop-shadow-md" />
             <span className="text-lg font-bold font-display tracking-tight text-rose-50">Chakrapani Das Public School Jalah</span>
           </div>
 
@@ -290,7 +348,9 @@ export default function LoginPortal({ onBackToWeb, onLoginSuccess }: LoginPortal
             <>
               <form onSubmit={handleLoginSubmit} className="space-y-4" id="login-form">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">Username / Identifier</label>
+                  <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {selectedTab === 'student' ? 'Registered Phone Number' : selectedTab === 'teacher' ? 'Username or Teacher ID' : 'Username / Identifier'}
+                  </label>
                   <div className="relative">
                     <span className="absolute left-3.5 top-2.5 text-slate-400">
                       <User className="w-4 h-4" />
@@ -302,8 +362,8 @@ export default function LoginPortal({ onBackToWeb, onLoginSuccess }: LoginPortal
                       onChange={(e) => setUsername(e.target.value)}
                       placeholder={
                         selectedTab === 'admin' ? 'e.g. admin' :
-                        selectedTab === 'teacher' ? 'e.g. teacher1' :
-                        'e.g. student1'
+                        selectedTab === 'teacher' ? 'e.g. T01 or sarahj' :
+                        'e.g. +1 (555) 987-6543'
                       }
                       className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#800000] bg-slate-50/50"
                       id="login-username"
@@ -312,7 +372,9 @@ export default function LoginPortal({ onBackToWeb, onLoginSuccess }: LoginPortal
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">Password Credentials</label>
+                  <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {selectedTab === 'student' ? 'Student ID (or Admission No.)' : 'Password Credentials'}
+                  </label>
                   <div className="relative">
                     <span className="absolute left-3.5 top-2.5 text-slate-400">
                       <Lock className="w-4 h-4" />
@@ -322,24 +384,18 @@ export default function LoginPortal({ onBackToWeb, onLoginSuccess }: LoginPortal
                       required 
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Password"
+                      placeholder={
+                        selectedTab === 'student' ? 'e.g. S08 or ADM2020-C10-601' : 'Password'
+                      }
                       className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#800000] bg-slate-50/50"
                       id="login-password"
                     />
                   </div>
-                  <div className="flex justify-between items-center pt-2">
-                    <button 
-                      type="button"
-                      onClick={() => {
-                        setIsRegisterMode(true);
-                        setErrorMsg('');
-                        setSuccessMsg('');
-                      }}
-                      className="text-[10px] text-indigo-700 hover:text-indigo-900 font-extrabold cursor-pointer hover:underline text-left"
-                    >
-                      Are you a Teacher? Register Here →
-                    </button>
-                    <span className="text-[9px] text-slate-400 font-semibold cursor-pointer">Contact Administration</span>
+                  <div className="flex justify-between items-center pt-2 bg-slate-50 border border-slate-200/60 p-2.5 rounded-xl">
+                    <span className="text-[10px] text-slate-500 font-semibold flex items-center gap-1.5 leading-relaxed">
+                      <ShieldAlert className="w-3.5 h-3.5 text-[#800000] shrink-0" />
+                      Only school administrators are authorized to add or register new students, parents, and teachers.
+                    </span>
                   </div>
                 </div>
 
@@ -535,6 +591,7 @@ export default function LoginPortal({ onBackToWeb, onLoginSuccess }: LoginPortal
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
               
               <button 
+                type="button"
                 onClick={() => handleQuickDemoLogin('admin', 'admin', 'admin')}
                 className="bg-rose-50 hover:bg-rose-100/90 text-rose-950 font-bold p-2 rounded-xl border border-rose-100 flex flex-col items-center justify-center gap-0.5 transition-colors text-center cursor-pointer text-[10px]"
                 id="quick-login-admin"
@@ -545,25 +602,106 @@ export default function LoginPortal({ onBackToWeb, onLoginSuccess }: LoginPortal
               </button>
 
               <button 
-                onClick={() => handleQuickDemoLogin('teacher', 'teacher1', 'teacher')}
+                type="button"
+                onClick={() => handleQuickDemoLogin('teacher', 'T01', 'sarah123')}
                 className="bg-amber-50/40 hover:bg-amber-100/60 text-amber-950 font-bold p-2 rounded-xl border border-amber-200 flex flex-col items-center justify-center gap-0.5 transition-colors text-center cursor-pointer text-[10px]"
                 id="quick-login-teacher"
               >
                 <User className="w-3.5 h-3.5 text-amber-600" />
                 <span>Sarah (Teacher)</span>
-                <span className="text-[8px] text-amber-700 font-mono font-bold">teacher1 / teacher</span>
+                <span className="text-[8px] text-amber-700 font-mono font-bold">T01 / sarah123</span>
               </button>
 
               <button 
-                onClick={() => handleQuickDemoLogin('student', 'student1', 'student')}
+                type="button"
+                onClick={() => handleQuickDemoLogin('student', '+1 (555) 987-6543', 'S08')}
                 className="bg-rose-50/80 hover:bg-rose-100 text-rose-950 font-bold p-2 rounded-xl border border-rose-200 flex flex-col items-center justify-center gap-0.5 transition-colors text-center cursor-pointer text-[10px]"
                 id="quick-login-student"
               >
                 <BookOpen className="w-3.5 h-3.5 text-[#800000]" />
                 <span>Alex (Student)</span>
-                <span className="text-[8px] text-rose-700 font-mono font-bold">student1 / student</span>
+                <span className="text-[8px] text-rose-700 font-mono font-bold">+1 (555) 987-6543 / S08</span>
               </button>
 
+            </div>
+
+            {/* FULL ACCOUNTS DIRECTORY FOR DEMO */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAccountsDir(!showAccountsDir)}
+                className="w-full flex items-center justify-between text-[10px] text-slate-500 font-bold uppercase tracking-wider bg-slate-50 hover:bg-slate-100 p-2 rounded-lg transition-colors cursor-pointer border border-slate-150"
+              >
+                <span className="flex items-center gap-1.5 text-slate-700">
+                  <Key className="w-3.5 h-3.5 text-[#800000]" />
+                  View All Individual Logins ({teachers.length} Teachers, {students.length} Students)
+                </span>
+                {showAccountsDir ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+
+              {showAccountsDir && (
+                <div className="mt-2 bg-slate-50 border border-slate-150 p-3 rounded-xl max-h-56 overflow-y-auto space-y-3 shadow-inner text-[10px]">
+                  
+                  {/* Teachers Directory */}
+                  <div>
+                    <h5 className="font-extrabold text-[#800000] border-b border-slate-200 pb-1 mb-1.5 uppercase tracking-wide">
+                      Faculty / Teachers ({teachers.length})
+                    </h5>
+                    <div className="space-y-1">
+                      {teachers.map(t => (
+                        <div 
+                          key={t.id}
+                          onClick={() => handleQuickDemoLogin('teacher', t.id, t.password || 'sarah123')}
+                          className="flex items-center justify-between p-1.5 bg-white border border-slate-100 rounded-lg hover:border-[#800000] hover:bg-rose-50/30 transition-all cursor-pointer group"
+                        >
+                          <div>
+                            <span className="font-bold text-slate-800">{t.name}</span>
+                            <span className="text-slate-405 font-medium ml-1">({t.designation.split('&')[0]})</span>
+                          </div>
+                          <div className="flex items-center gap-2 font-mono">
+                            <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[9px] text-slate-700 font-semibold group-hover:bg-rose-100/50">
+                              ID: {t.id}
+                            </span>
+                            <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[9px] text-slate-600 font-semibold group-hover:bg-rose-100/50">
+                              P: {t.password || 'sarah123'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Students Directory */}
+                  <div>
+                    <h5 className="font-extrabold text-indigo-700 border-b border-slate-200 pb-1 mb-1.5 uppercase tracking-wide">
+                      Students / Parents ({students.length})
+                    </h5>
+                    <div className="space-y-1">
+                      {students.map(s => (
+                        <div 
+                          key={s.id}
+                          onClick={() => handleQuickDemoLogin('student', s.phone, s.id)}
+                          className="flex items-center justify-between p-1.5 bg-white border border-slate-100 rounded-lg hover:border-[#800000] hover:bg-rose-50/30 transition-all cursor-pointer group"
+                        >
+                          <div>
+                            <span className="font-bold text-slate-800">{s.name}</span>
+                            <span className="text-indigo-650 font-bold bg-indigo-50 px-1 py-0.2 rounded text-[8px] ml-1.5">{s.classId}</span>
+                          </div>
+                          <div className="flex items-center gap-2 font-mono">
+                            <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[9px] text-slate-700 font-semibold group-hover:bg-rose-100/50">
+                              Phone: {s.phone}
+                            </span>
+                            <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[9px] text-slate-600 font-semibold group-hover:bg-rose-100/50">
+                              ID: {s.id}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                </div>
+              )}
             </div>
           </div>
 

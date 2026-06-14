@@ -39,6 +39,19 @@ const KEYS = {
 };
 
 export function initializeSchoolStorage() {
+  // Clear old outdated template credentials if they exist in localStorage cache
+  const rawTeachers = localStorage.getItem(KEYS.TEACHERS);
+  const rawStudents = localStorage.getItem(KEYS.STUDENTS);
+  if (rawTeachers && (rawTeachers.includes('"teacher1"') || !rawTeachers.includes('"password"'))) {
+    localStorage.removeItem(KEYS.TEACHERS);
+    localStorage.removeItem(KEYS.MARKS); // clear dependent marks too for consistent integrity
+    localStorage.removeItem(KEYS.ATTENDANCE);
+  }
+  if (rawStudents && (rawStudents.includes('"student1"') || !rawStudents.includes('"password"'))) {
+    localStorage.removeItem(KEYS.STUDENTS);
+    localStorage.removeItem(KEYS.FEE_PAYMENTS);
+  }
+
   if (!localStorage.getItem(KEYS.CLASSES)) {
     localStorage.setItem(KEYS.CLASSES, JSON.stringify(INITIAL_CLASSES));
   }

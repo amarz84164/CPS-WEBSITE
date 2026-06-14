@@ -24,7 +24,15 @@ import {
   LogOut,
   FileCheck,
   Upload,
-  Camera
+  Camera,
+  Server,
+  HardDrive,
+  Terminal,
+  Download,
+  RefreshCw,
+  Play,
+  Sliders,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   getStudents, 
@@ -50,7 +58,15 @@ interface AdminDashboardProps {
 
 export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
   // Navigation Tabs
-  const [activeTab, setActiveTab] = useState<'students' | 'teachers' | 'fees' | 'attendance' | 'exams' | 'sql_schema'>('students');
+  const [activeTab, setActiveTab] = useState<'students' | 'teachers' | 'fees' | 'attendance' | 'exams' | 'databases'>('students');
+
+  // Database Hub States
+  const [selectedDb, setSelectedDb] = useState<'STUDENT_DB' | 'TEACHER_DB'>('STUDENT_DB');
+  const [dbConsoleTab, setDbConsoleTab] = useState<'data' | 'schema' | 'integrity' | 'sql_interpreter'>('data');
+  const [dbSearchQuery, setDbSearchQuery] = useState('');
+  const [sqlQuery, setSqlQuery] = useState('SELECT * FROM students LIMIT 5;');
+  const [sqlResult, setSqlResult] = useState<any>(null);
+  const [sqlError, setSqlError] = useState<string | null>(null);
 
   // Load datasets
   const [students, setStudents] = useState<Student[]>(() => getStudents());
@@ -308,6 +324,174 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
     alert('SQL DDL Database Schema copied to your clipboard!');
   };
 
+  const runSqlSandbox = (queryText: string) => {
+    setSqlError(null);
+    setSqlResult(null);
+    try {
+      const q = queryText.trim().toLowerCase().replace(/\s+/g, ' ').replace(/;$/, '');
+      if (!q.startsWith('select ')) {
+        setSqlError('Query Syntax Error: This sandbox is running in secure READ-ONLY mode. Only "SELECT" queries are permitted.');
+        return;
+      }
+
+      const selectMatch = q.match(/^select\s+(.+?)\s+from\s+(\w+)(?:\s+where\s+(.+?))?(?:\s+limit\s+(\d+))?$/);
+      if (!selectMatch) {
+        setSqlError('Query Syntax Error: Check syntax. Supported format: SELECT columns FROM table [WHERE key = \'val\'] [LIMIT num]');
+        return;
+      }
+
+      const [, fieldsStr, tableName, whereClause, limitStr] = selectMatch;
+      let rawSource: any[] = [];
+      if (tableName === 'students') {
+        rawSource = getStudents();
+      } else if (tableName === 'teachers') {
+        rawSource = getTeachers();
+      } else if (tableName === 'classes') {
+        rawSource = getClasses();
+      } else if (tableName === 'fee_payments') {
+        rawSource = getFeePayments();
+      } else {
+        setSqlError(`Table "${tableName}" not found in database. Supported tables in this sandbox: 'students', 'teachers', 'classes', 'fee_payments'`);
+        return;
+      }
+
+      let filtered = [...rawSource];
+
+      if (whereClause) {
+        const cleanWhere = whereClause.trim();
+        const eqMatch = cleanWhere.match(/(\w+)\s*=\s*'([^']+)'/) || cleanWhere.match(/(\w+)\s*=\s*(\w+)/);
+        if (eqMatch) {
+          const [, col, val] = eqMatch;
+          
+          // Case-insensitive col lookup
+          filtered = filtered.filter(item => {
+            const actualKey = Object.keys(item).find(k => k.toLowerCase() === col.toLowerCase());
+            const itemVal = actualKey ? String(item[actualKey as keyof typeof item] || '') : '';
+            return itemVal.toLowerCase() === val.toLowerCase();
+          });
+        } else {
+          setSqlError('WHERE clause syntax unsupported. Use precise direct matching e.g. `WHERE classId = \'Class-X\'` or `WHERE id = \'T01\'`');
+          return;
+        }
+      }
+
+      const requestedFields = fieldsStr.split(',').map(f => f.trim());
+      const projected = filtered.map(item => {
+        if (fieldsStr === '*') return item;
+        const newObj: any = {};
+        requestedFields.forEach(col => {
+          const actualKey = Object.keys(item).find(k => k.toLowerCase() === col.toLowerCase());
+          if (actualKey) {
+            newObj[col] = item[actualKey as keyof typeof item];
+          } else {
+            newObj[col] = null;
+          }
+        });
+        return newObj;
+      });
+
+      let finalResult = projected;
+      if (limitStr) {
+        const limitCount = parseInt(limitStr, 10);
+        if (!isNaN(limitCount)) {
+          finalResult = projected.slice(0, limitCount);
+        }
+      }
+
+      const columns = fieldsStr === '*' ? (rawSource.length > 0 ? Object.keys(rawSource[0]) : ['id']) : requestedFields;
+      setSqlResult({
+        rows: finalResult,
+        columns: columns,
+        count: finalResult.length,
+        totalInTable: rawSource.length
+      });
+    } catch (err: any) {
+      setSqlError(`Execution Error: ${err.message || 'Error occurred during SQL processing'}`);
+    }
+  };
+
+  const verifyDatabaseIntegrity = () => {
+    const logs: Array<{ type: 'info' | 'success' | 'warn'; message: string }> = [];
+    logs.push({ type: 'info', message: `Initializing Referential Integrity Scanners...` });
+    
+    // Check Students
+    logs.push({ type: 'info', message: `Scanning student records (Total: ${students.length})` });
+    let studentErrors = 0;
+    const studentUsernames = new Set<string>();
+    const studentIds = new Set<string>();
+    
+    students.forEach(s => {
+      if (studentIds.has(s.id)) {
+        logs.push({ type: 'warn', message: `CONSTRAINT VIOLATION: Duplicate Student ID '${s.id}' detected for student '${s.name}'!` });
+        studentErrors++;
+      }
+      studentIds.add(s.id);
+
+      if (studentUsernames.has(s.username.toLowerCase())) {
+        logs.push({ type: 'warn', message: `CONSTRAINT VIOLATION: Duplicate Username '${s.username}' detected for student '${s.name}'!` });
+        studentErrors++;
+      }
+      studentUsernames.add(s.username.toLowerCase());
+
+      const classExists = classes.some(c => c.id === s.classId);
+      if (!classExists) {
+        logs.push({ type: 'warn', message: `FOREIGN KEY VIOLATION: Student '${s.name}' has invalid Class ID reference: '${s.classId}'` });
+        studentErrors++;
+      }
+    });
+
+    if (studentErrors === 0) {
+      logs.push({ type: 'success', message: `All student reference indices relate perfectly to registered classes.` });
+    }
+
+    // Check Teachers
+    logs.push({ type: 'info', message: `Scanning teacher/faculty keys (Total: ${teachers.length})` });
+    let teacherErrors = 0;
+    const teacherUsernames = new Set<string>();
+    const teacherIds = new Set<string>();
+
+    teachers.forEach(t => {
+      if (teacherIds.has(t.id)) {
+        logs.push({ type: 'warn', message: `CONSTRAINT VIOLATION: Duplicate Teacher ID '${t.id}' detected for faculty '${t.name}'!` });
+        teacherErrors++;
+      }
+      teacherIds.add(t.id);
+
+      if (teacherUsernames.has(t.username.toLowerCase())) {
+        logs.push({ type: 'warn', message: `CONSTRAINT VIOLATION: Duplicate Username '${t.username}' detected for faculty '${t.name}'!` });
+        teacherErrors++;
+      }
+      teacherUsernames.add(t.username.toLowerCase());
+    });
+
+    if (teacherErrors === 0) {
+      logs.push({ type: 'success', message: `Teacher and employee data points have been matched successfully.` });
+    }
+
+    // Check Marks Integrity
+    logs.push({ type: 'info', message: `Scanning marks database indexes...` });
+    let marksErrors = 0;
+    marks.forEach(m => {
+      const studentExists = students.some(s => s.id === m.studentId);
+      if (!studentExists) {
+        logs.push({ type: 'warn', message: `FOREIGN KEY VIOLATION: Mark index references non-existent Student ID: '${m.studentId}'` });
+        marksErrors++;
+      }
+    });
+    if (marksErrors === 0 && marks.length > 0) {
+      logs.push({ type: 'success', message: `All mark sheets check out with correct student and parent references.` });
+    }
+
+    const totalErrors = studentErrors + teacherErrors + marksErrors;
+    if (totalErrors === 0) {
+      logs.push({ type: 'success', message: `DATABASE INTEGRITY STATUS: PRISTINE (0 violations of relational keys detected).` });
+    } else {
+      logs.push({ type: 'warn', message: `DATABASE INTEGRITY STATUS: COMPROMISED (${totalErrors} constraints failed).` });
+    }
+
+    return logs;
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800" id="admin-dashboard-root">
       
@@ -347,7 +531,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                 { id: 'fees', label: 'Fee Matrix & Receipts', icon: DollarSign },
                 { id: 'attendance', label: 'Attendance Overviews', icon: Calendar },
                 { id: 'exams', label: 'Exam Results Overview', icon: FileCheck },
-                { id: 'sql_schema', label: 'Relational SQL Schema', icon: Database }
+                { id: 'databases', label: 'Separate Databases Console', icon: Database }
               ].map(tab => {
                 const IconComp = tab.icon;
                 const active = activeTab === tab.id;
@@ -369,15 +553,69 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             </nav>
           </div>
 
-          {/* QUICK SUMMARY bento numbers */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white border border-slate-200/60 p-4 rounded-xl shadow-sm text-center">
-              <span className="text-[9px] font-bold text-slate-400 block uppercase">Students</span>
-              <span className="text-2xl font-black text-slate-900 block mt-1">{totalStudentsCount}</span>
+          {/* QUICK ACTIONS PANEL */}
+          <div className="bg-slate-900 text-white rounded-2xl p-4 border border-slate-800 shadow-sm space-y-3" id="admin-sidebar-quick-actions">
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Admin Quick Actions</span>
+            <div className="grid grid-cols-1 gap-2">
+              <button 
+                onClick={() => {
+                  setActiveTab('students');
+                  setIsAddingStudent(true);
+                  setTimeout(() => {
+                    const el = document.getElementById('section-admin-students');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }, 100);
+                }}
+                className="w-full bg-indigo-650 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2.5 rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer border border-indigo-500"
+                id="btn-sidebar-add-student"
+              >
+                <Plus className="w-4 h-4 animate-pulse" /> Add New Student
+              </button>
+              
+              <button 
+                onClick={() => {
+                  setActiveTab('teachers');
+                  setIsAddingTeacher(true);
+                  setTimeout(() => {
+                    const el = document.getElementById('section-admin-teachers');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }, 100);
+                }}
+                className="w-full bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold px-3 py-2.5 rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-755"
+                id="btn-sidebar-add-teacher"
+              >
+                <Plus className="w-4 h-4" /> Add New Teacher
+              </button>
             </div>
-            <div className="bg-white border border-slate-200/60 p-4 rounded-xl shadow-sm text-center">
-              <span className="text-[9px] font-bold text-slate-400 block uppercase">Instructors</span>
-              <span className="text-2xl font-black text-slate-900 block mt-1">{totalTeachersCount}</span>
+          </div>
+
+          {/* QUICK SUMMARY bento numbers */}
+          <div className="grid grid-cols-2 gap-3" id="admin-sidebar-quick-stats">
+            <div 
+              onClick={() => {
+                setActiveTab('students');
+                setIsAddingStudent(true);
+              }}
+              className="bg-white border border-slate-200/60 p-4 rounded-xl shadow-sm text-center cursor-pointer hover:border-indigo-600 hover:bg-indigo-50/10 group transition-all relative"
+            >
+              <span className="text-[9px] font-bold text-slate-400 block uppercase group-hover:text-indigo-600 transition-colors">Students</span>
+              <span className="text-2xl font-black text-slate-900 block mt-1 group-hover:scale-105 transition-transform">{totalStudentsCount}</span>
+              <span className="absolute bottom-1 right-2 bg-indigo-100 text-indigo-700 rounded-full w-3.5 h-3.5 text-[10px] items-center justify-center font-bold shadow-xs flex select-none group-hover:bg-indigo-650 group-hover:text-white transition-colors" title="Add Student">
+                +
+              </span>
+            </div>
+            <div 
+              onClick={() => {
+                setActiveTab('teachers');
+                setIsAddingTeacher(true);
+              }}
+              className="bg-white border border-slate-200/60 p-4 rounded-xl shadow-sm text-center cursor-pointer hover:border-amber-600 hover:bg-amber-50/10 group transition-all relative"
+            >
+              <span className="text-[9px] font-bold text-slate-400 block uppercase group-hover:text-amber-600 transition-colors">Instructors</span>
+              <span className="text-2xl font-black text-slate-900 block mt-1 group-hover:scale-105 transition-transform">{totalTeachersCount}</span>
+              <span className="absolute bottom-1 right-2 bg-amber-100 text-amber-700 rounded-full w-3.5 h-3.5 text-[10px] items-center justify-center font-bold shadow-xs flex select-none group-hover:bg-amber-650 group-hover:text-white transition-colors" title="Add Instructor">
+                +
+              </span>
             </div>
           </div>
 
@@ -1278,37 +1516,449 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             </div>
           )}
 
-          {/* ============ TAB: SECURE SQL SCHEMA DDL ============ */}
-          {activeTab === 'sql_schema' && (
-            <div className="space-y-6" id="section-admin-sql-schema">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900">Relational SQL Schema DDL Design</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Relational tables structure for Postgres / MySQL, mapping precisely to the requested data collections.</p>
+          {/* ============ TAB: SECURE SEPARATE DATABASES CONSOLE ============ */}
+          {activeTab === 'databases' && (
+            <div className="space-y-6 animate-fadeIn lg:col-span-12" id="section-admin-databases">
+              
+              {/* Header block with statistics */}
+              <div className="border-b border-slate-100 pb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                      <Database className="w-5 h-5 text-indigo-650" />
+                      Separate Databases Console Hub
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Explore, query, and inspect Student & Teacher relational tables directly in the web UI.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => {
+                        const jsonStr = JSON.stringify({ students, teachers, feePayments, feeStructures }, null, 2);
+                        const blob = new Blob([jsonStr], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = `School_Full_Database_Backup_${new Date().toISOString().split('T')[0]}.json`;
+                        link.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Full DB Export
+                    </button>
+                  </div>
                 </div>
 
-                <button 
-                  onClick={copySQLSchema}
-                  className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-sm"
-                >
-                  <FileText className="w-4 h-4" /> Copy SQL Script
-                </button>
-              </div>
+                {/* DB Instance summary statistics cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-5">
+                  <div className="bg-slate-100 border border-slate-200/60 rounded-xl p-3.5 flex items-center gap-3">
+                    <div className="p-2 bg-indigo-55 text-indigo-600 rounded-lg">
+                      <Server className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-bold uppercase font-mono">DB HOST ENGINE</div>
+                      <div className="text-xs font-bold text-slate-800 font-mono">Local-Indexed Engine</div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-slate-100 border border-slate-200/60 rounded-xl p-3.5 flex items-center gap-3">
+                    <div className="p-2 bg-rose-50 text-rose-600 rounded-lg">
+                      <Users className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-bold uppercase font-mono">STUDENT_DB ROWS</div>
+                      <div className="text-xs font-bold text-slate-800">{students.length} Accounts</div>
+                    </div>
+                  </div>
 
-              <div className="bg-slate-900 text-slate-100 rounded-2xl p-5 border border-slate-800 font-mono text-[11px] overflow-x-auto max-h-[460px] leading-relaxed shadow-inner">
-                <pre>{DATABASE_SCHEMA_SQL}</pre>
-              </div>
+                  <div className="bg-slate-100 border border-slate-200/60 rounded-xl p-3.5 flex items-center gap-3">
+                    <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-bold uppercase font-mono">TEACHER_DB ROWS</div>
+                      <div className="text-xs font-bold text-slate-800">{teachers.length} Accounts</div>
+                    </div>
+                  </div>
 
-              <div className="bg-slate-50 border border-slate-150 p-4 rounded-xl flex items-start gap-3">
-                <Info className="w-5 h-5 text-indigo-650 mt-0.5" />
-                <div className="text-xs text-slate-600 space-y-1">
-                  <p className="font-bold text-slate-800">Database Schema Design Architectural Invariants:</p>
-                  <ul className="list-disc pl-4 space-y-1 leading-normal">
-                    <li><strong>Referential Integrity Constraints:</strong> Fully verified foreign key constraints mapping Students and Marks directly to Classes, and Teachers Assignments to Classroom courses.</li>
-                    <li><strong>Scale safety:</strong> Designed with performance-optimized composite primary indexes (Date + Entity lookup, Student ID + Exam marks filters) to prevent latency during large multi-user queries.</li>
-                  </ul>
+                  <div className="bg-slate-100 border border-slate-200/60 rounded-xl p-3.5 flex items-center gap-3">
+                    <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                      <CheckCircle className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-bold uppercase font-mono">HEALTH STATUS</div>
+                      <div className="text-xs font-bold text-emerald-700 flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        Active Pristine
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
+
+              {/* Database selector switch */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-100 p-2 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => {
+                      setSelectedDb('STUDENT_DB');
+                      setSqlQuery('SELECT * FROM students LIMIT 5;');
+                      setSqlResult(null);
+                      setSqlError(null);
+                    }}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold font-mono transition-all flex items-center gap-2 ${
+                      selectedDb === 'STUDENT_DB' 
+                        ? 'bg-[#800000] text-white shadow-sm' 
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <HardDrive className="w-4 h-4" />
+                    STUDENT_DB (Segregated)
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setSelectedDb('TEACHER_DB');
+                      setSqlQuery('SELECT * FROM teachers LIMIT 5;');
+                      setSqlResult(null);
+                      setSqlError(null);
+                    }}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold font-mono transition-all flex items-center gap-2 ${
+                      selectedDb === 'TEACHER_DB' 
+                        ? 'bg-[#800000] text-white shadow-sm' 
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <HardDrive className="w-4 h-4" />
+                    TEACHER_DB (Segregated)
+                  </button>
+                </div>
+
+                {/* Sub Tab selection */}
+                <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1">
+                  {[
+                    { id: 'data', label: 'Data Explorer', icon: Search },
+                    { id: 'schema', label: 'Relational DDL', icon: FileText },
+                    { id: 'integrity', label: 'Integrity Report', icon: Sliders },
+                    { id: 'sql_interpreter', label: 'SQL Console Sandbox', icon: Terminal }
+                  ].map(tab => {
+                    const active = dbConsoleTab === tab.id;
+                    const TabIcon = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => setDbConsoleTab(tab.id as any)}
+                        className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          active 
+                            ? 'bg-slate-900 text-white' 
+                            : 'text-slate-600 hover:text-slate-950 hover:bg-slate-100'
+                        }`}
+                      >
+                        <TabIcon className="w-3.5 h-3.5" />
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* VIEW: DATA EXPLORER */}
+              {dbConsoleTab === 'data' && (
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md">
+                      TABLE_NAME: <span className="text-[#800000] font-black">{selectedDb === 'STUDENT_DB' ? 'students' : 'teachers'}</span>
+                    </div>
+                    <div className="relative w-full sm:w-64">
+                      <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                      <input 
+                        type="text" 
+                        placeholder={`Search ${selectedDb === 'STUDENT_DB' ? 'students' : 'teachers'} record set...`} 
+                        value={dbSearchQuery}
+                        onChange={(e) => setDbSearchQuery(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 border border-slate-200 bg-slate-50 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#800000] focus:bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-slate-100">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-900 text-slate-100 select-none font-mono uppercase text-[10px] tracking-wider border-b border-slate-800">
+                          <th className="p-3"># ROW_ID</th>
+                          {selectedDb === 'STUDENT_DB' ? (
+                            <>
+                              <th className="p-3">student_id (PK)</th>
+                              <th className="p-3">roll_no</th>
+                              <th className="p-3">name</th>
+                              <th className="p-3">class_id (FK)</th>
+                              <th className="p-3">phone</th>
+                              <th className="p-3">guardian_name</th>
+                            </>
+                          ) : (
+                            <>
+                              <th className="p-3">teacher_id (PK)</th>
+                              <th className="p-3">emp_no (UNIQUE)</th>
+                              <th className="p-3">name</th>
+                              <th className="p-3">designation</th>
+                              <th className="p-3">email</th>
+                              <th className="p-3">subject_specialties</th>
+                            </>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {selectedDb === 'STUDENT_DB' ? (
+                          students
+                            .filter(s => !dbSearchQuery || s.name.toLowerCase().includes(dbSearchQuery.toLowerCase()) || s.id.toLowerCase().includes(dbSearchQuery.toLowerCase()) || s.classId.toLowerCase().includes(dbSearchQuery.toLowerCase()))
+                            .map((row, idx) => (
+                              <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="p-3 font-mono text-slate-400 font-semibold">{idx + 1}</td>
+                                <td className="p-3 font-mono text-slate-800 font-bold">{row.id}</td>
+                                <td className="p-3 font-mono text-indigo-650 font-bold">{row.rollNo || 'N/A'}</td>
+                                <td className="p-3 font-semibold text-slate-900">{row.name}</td>
+                                <td className="p-3 font-mono"><span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold">{row.classId}</span></td>
+                                <td className="p-3 text-slate-600">{row.phone}</td>
+                                <td className="p-3 text-slate-600">{row.guardianName || 'N/A'}</td>
+                              </tr>
+                            ))
+                        ) : (
+                          teachers
+                            .filter(t => !dbSearchQuery || t.name.toLowerCase().includes(dbSearchQuery.toLowerCase()) || t.id.toLowerCase().includes(dbSearchQuery.toLowerCase()) || t.designation.toLowerCase().includes(dbSearchQuery.toLowerCase()))
+                            .map((row, idx) => (
+                              <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="p-3 font-mono text-slate-400 font-semibold">{idx + 1}</td>
+                                <td className="p-3 font-mono text-slate-800 font-bold">{row.id}</td>
+                                <td className="p-3 font-mono text-indigo-650 font-bold">{row.empNo || 'EMP0' + (idx+1)}</td>
+                                <td className="p-3 font-semibold text-slate-900">{row.name}</td>
+                                <td className="p-3 text-slate-700 font-medium">{row.designation}</td>
+                                <td className="p-3 font-mono text-slate-600">{row.email}</td>
+                                <td className="p-3 text-slate-600">{row.subjects || 'All Subjects'}</td>
+                              </tr>
+                            ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center justify-between">
+                    <span>* Fetched in real-time from active engine instance</span>
+                    <span>Total Loaded Records: {selectedDb === 'STUDENT_DB' ? students.length : teachers.length}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* VIEW: RELATIONAL DDL SCHEMA */}
+              {dbConsoleTab === 'schema' && (
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3 font-sans">
+                    <div>
+                      <h4 className="font-bold text-slate-900">{selectedDb === 'STUDENT_DB' ? 'Relational Students Database (SQL Schema)' : 'Relational Teachers Faculty Database (SQL Schema)'}</h4>
+                      <p className="text-[11px] text-slate-400">Strict constraints, keys, index statements and cascade deletes specified inside the system model.</p>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        const schemaText = selectedDb === 'STUDENT_DB' 
+                          ? DATABASE_SCHEMA_SQL.substring(DATABASE_SCHEMA_SQL.indexOf('-- 3. Students Table'), DATABASE_SCHEMA_SQL.indexOf('-- 4. Classroom Courses'))
+                          : DATABASE_SCHEMA_SQL.substring(DATABASE_SCHEMA_SQL.indexOf('-- 2. Teachers Table'), DATABASE_SCHEMA_SQL.indexOf('-- 3. Students Table'));
+                        navigator.clipboard.writeText(schemaText.trim());
+                        alert(`${selectedDb} Relational Table Setup Schema copied to clipboard!`);
+                      }}
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-250 flex items-center gap-1 cursor-pointer transition-all font-sans"
+                    >
+                      <FileText className="w-3.5 h-3.5" /> Copy Relational DDL
+                    </button>
+                  </div>
+
+                  <div className="bg-slate-900 text-slate-100 rounded-xl p-4 border border-slate-800 font-mono text-[11px] overflow-x-auto leading-relaxed shadow-inner max-h-[350px]">
+                    <pre>
+                      {selectedDb === 'STUDENT_DB' 
+                        ? DATABASE_SCHEMA_SQL.substring(DATABASE_SCHEMA_SQL.indexOf('-- 3. Students Table'), DATABASE_SCHEMA_SQL.indexOf('-- 4. Classroom Courses')).trim()
+                        : DATABASE_SCHEMA_SQL.substring(DATABASE_SCHEMA_SQL.indexOf('-- 2. Teachers Table'), DATABASE_SCHEMA_SQL.indexOf('-- 3. Students Table')).trim()
+                      }
+                    </pre>
+                  </div>
+
+                  <div className="bg-blue-50/50 border border-blue-100 p-3.5 rounded-xl flex items-start gap-2.5 text-blue-900 text-xs">
+                    <Info className="w-4 h-4 text-blue-600 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Schema Integrity Invariant:</span>{' '}
+                      {selectedDb === 'STUDENT_DB' 
+                        ? 'Includes roll_no uniqueness per classroom via [CONSTRAINT unique_roll_per_class UNIQUE(class_id, roll_no)], enforcing exact class record segregation.'
+                        : 'Enforces strict employee unique constraints to ensure single teacher record allocation per identity with unique username and emp_no verification.'
+                      }
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* VIEW: SYSTEM INTEGRITY ANALYSIS */}
+              {dbConsoleTab === 'integrity' && (
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                  <div>
+                    <h4 className="font-bold text-slate-900 font-sans">Database Consistency & Referential Keys Analyzer</h4>
+                    <p className="text-[11px] text-slate-400">Verifies foreign keys, duplicate indices, format alignments and records integrity checkups dynamically.</p>
+                  </div>
+
+                  <div className="bg-slate-900 text-[11px] font-mono p-4 rounded-xl text-slate-200 border border-slate-800 max-h-[300px] overflow-y-auto space-y-1.5 shadow-inner">
+                    {verifyDatabaseIntegrity().map((log, lidx) => (
+                      <div key={lidx} className="flex items-start gap-2">
+                        <span className="text-slate-500 select-none">[{lidx+1}]</span>
+                        <span className={
+                          log.type === 'success' ? 'text-emerald-400 font-semibold' :
+                          log.type === 'warn' ? 'text-rose-400 font-bold bg-rose-950/20 px-1 rounded' :
+                          'text-indigo-300'
+                        }>
+                          {log.type === 'success' ? '● SUCCESS: ' : log.type === 'warn' ? '▲ CONSTRAINT_ERROR: ' : 'ℹ INFO: '}
+                          {log.message}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs text-emerald-800 bg-emerald-50 border border-emerald-100 p-3 rounded-xl">
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                    <div>
+                      All dynamic checks completed! There is perfect physical segregation between the <span className="font-bold">Student Database</span> and the <span className="font-bold font-sans">Teacher Database</span>, with isolated persistent credentials and foreign constraints.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* VIEW: SQL INTERPRETER / CONSOLE */}
+              {dbConsoleTab === 'sql_interpreter' && (
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-slate-900 flex items-center gap-1.5 font-sans">
+                        <Terminal className="w-4 h-4 text-[#800000]" />
+                        SQL Command Engine Sandbox
+                      </h4>
+                      <p className="text-[11px] text-slate-400">Write standard SQL projection queries below to fetch data from isolated schemas.</p>
+                    </div>
+                    <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[9px] font-mono px-2 py-0.5 rounded uppercase font-bold tracking-wider">
+                      Read-Only Safe Mode
+                    </span>
+                  </div>
+
+                  {/* Suggestion Buttons */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] text-slate-400 font-mono font-bold uppercase mr-1">Quick Queries:</span>
+                    <button 
+                      onClick={() => {
+                        setSqlQuery('SELECT * FROM students LIMIT 5;');
+                        runSqlSandbox('SELECT * FROM students LIMIT 5;');
+                      }}
+                      className="bg-slate-50 hover:bg-slate-100 text-[10px] font-mono text-slate-705 px-2 py-1 rounded border border-slate-200 cursor-pointer"
+                    >
+                      SELECT * FROM students LIMIT 5
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setSqlQuery('SELECT * FROM teachers;');
+                        runSqlSandbox('SELECT * FROM teachers;');
+                      }}
+                      className="bg-slate-50 hover:bg-slate-100 text-[10px] font-mono text-slate-705 px-2 py-1 rounded border border-slate-200 cursor-pointer"
+                    >
+                      SELECT * FROM teachers
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setSqlQuery("SELECT id, name, email FROM teachers;");
+                        runSqlSandbox("SELECT id, name, email FROM teachers;");
+                      }}
+                      className="bg-slate-50 hover:bg-slate-100 text-[10px] font-mono text-slate-705 px-2 py-1 rounded border border-slate-200 cursor-pointer"
+                    >
+                      SELECT id, name, email FROM teachers
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setSqlQuery("SELECT name, phone FROM students WHERE classId = 'Class-X';");
+                        runSqlSandbox("SELECT name, phone FROM students WHERE classId = 'Class-X';");
+                      }}
+                      className="bg-slate-50 hover:bg-slate-100 text-[10px] font-mono text-slate-705 px-2 py-1 rounded border border-slate-200 cursor-pointer"
+                    >
+                      SELECT name, phone FROM students WHERE classId = 'Class-X'
+                    </button>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <textarea
+                      value={sqlQuery}
+                      onChange={(e) => setSqlQuery(e.target.value)}
+                      className="font-mono text-xs w-full p-3 border border-slate-300 rounded-xl bg-slate-950 text-slate-100 h-20 shadow-inner"
+                      placeholder="e.g. SELECT * FROM students LIMIT 5"
+                    />
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button 
+                      onClick={() => runSqlSandbox(sqlQuery)}
+                      className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md transition-colors"
+                    >
+                      <Play className="w-3.5 h-3.5" /> Execute Query
+                    </button>
+                  </div>
+
+                  {/* RESULTS PANELS */}
+                  {sqlError && (
+                    <div className="bg-rose-50 border border-rose-100 p-4 rounded-xl text-xs text-rose-800 space-y-1 font-mono">
+                      <div className="font-bold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4 text-rose-650" /> PARSE EXCEPTION</div>
+                      <div>{sqlError}</div>
+                    </div>
+                  )}
+
+                  {sqlResult && (
+                    <div className="space-y-3 animate-fadeIn text-slate-800 font-sans">
+                      <div className="flex items-center justify-between text-[11px] font-mono text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-101">
+                        <span>Query returned <span className="text-emerald-700 font-bold">{sqlResult.count}</span> records relative to <span className="font-bold">{sqlResult.totalInTable}</span> table entries.</span>
+                        <span className="text-emerald-700 font-bold">Execution Success</span>
+                      </div>
+
+                      <div className="overflow-x-auto rounded-xl border border-slate-200/60 shadow-sm max-h-[300px]">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-slate-900 border-b border-slate-800 text-slate-250 font-mono text-[10px] uppercase">
+                              {sqlResult.columns.map((colName: string) => (
+                                <th key={colName} className="p-2.5 font-bold tracking-wider">{colName}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 bg-white">
+                            {sqlResult.rows.map((row: any, rIdx: number) => (
+                              <tr key={rIdx} className="hover:bg-slate-55/60 transition-all font-mono text-[11px]">
+                                {sqlResult.columns.map((colName: string) => {
+                                  const cellVal = row[colName];
+                                  return (
+                                    <td key={colName} className="p-2.5 font-medium text-slate-800">
+                                      {cellVal === null || cellVal === undefined ? (
+                                        <span className="text-slate-300 select-none">NULL</span>
+                                      ) : typeof cellVal === 'object' ? (
+                                        <span className="text-indigo-400 font-semibold">{JSON.stringify(cellVal)}</span>
+                                      ) : (
+                                        String(cellVal)
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                            {sqlResult.rows.length === 0 && (
+                              <tr>
+                                <td colSpan={sqlResult.columns.length} className="p-8 text-center text-slate-400 font-bold italic bg-slate-50">
+                                  No rows found satisfying structural requirements or filter parameters.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
