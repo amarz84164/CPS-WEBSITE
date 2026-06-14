@@ -209,7 +209,7 @@ export default function StudentDashboard({ studentId, onLogout }: StudentDashboa
     reportText += `\n==================================================================\n`;
     reportText += `OFFICIAL STATUS: Registered Grade A+ state educational system.\n`;
     reportText += `COGNIZANT AUTHORITIES STATEMENT:\n`;
-    reportText += `  Approved by: Prof. Pamela Moore (Principal Officer, CDPSJ)\n`;
+    reportText += `  Approved by: AMARENDRA BORO (Principal Officer, CDPSJ)\n`;
     reportText += `  Official Verification: STAMP OF REGISTRAR OFFICE SECURE INTEGRITY\n`;
     reportText += `==================================================================\n`;
 

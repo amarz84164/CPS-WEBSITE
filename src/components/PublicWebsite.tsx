@@ -20,11 +20,22 @@ import {
   FileCheck,
   CheckCircle,
   Menu,
-  X
+  X,
+  Camera,
+  Image as ImageIcon,
+  Trash2,
+  Filter,
+  Plus,
+  Search,
+  Grid
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getAnnouncements, getSyllabus, getTeachers } from '../lib/schoolStorage';
 import { SyllabusItem } from '../types';
+// @ts-ignore
+import recreationalTurfImg from '../assets/images/recreational_turf_1781332683926.jpg';
+// @ts-ignore
+import principalAmarendraBoroImg from '../assets/images/principal_amarendra_boro_1781354636151.jpg';
 
 const sectionLabels: Record<string, string> = {
   home: 'Home',
@@ -33,6 +44,7 @@ const sectionLabels: Record<string, string> = {
   students: 'Student Hub',
   teachers: 'Teacher Hub',
   admissions: 'Admissions',
+  gallery: 'Student Gallery',
   contact: 'Contact'
 };
 
@@ -41,6 +53,59 @@ const STUDENT_CLUBS = [
   { id: 'club-2', prefix: 'DS', name: 'Socrates Debate Society', description: 'Master critical reasoning structure, analysis of current social events, public platform presence, and high-school tournaments.', timings: 'Tuesdays, 03:00 PM - 04:30 PM' },
   { id: 'club-3', prefix: 'MC', name: 'Mercury Coding Society', description: 'Learn web development in React, debug algorithm challenges, build functional micro-projects, and secure district awards.', timings: 'Fridays, 03:00 PM - 04:30 PM' },
   { id: 'club-4', prefix: 'EW', name: 'CDPSJ Eco-Warriors', description: 'Monitor high-school botanical greenhouses, manage solar grid variables, and lead green conservation programs.', timings: 'Mondays, 03:00 PM - 04:30 PM' }
+];
+
+const INITIAL_PRESET_GALLERY = [
+  {
+    id: 'gal-p1',
+    url: 'https://images.unsplash.com/photo-1577896851231-70ef18881754?auto=format&fit=crop&q=80&w=800&h=600',
+    title: 'High-school Physics Circuit Lab',
+    description: 'Class X students designing parallel circuit boards during their continuous assessment projects under academic coordinators.',
+    uploaderName: 'Professor Sarah Jenkins',
+    classId: 'Class-X',
+    category: 'Science',
+    uploadDate: '2026-05-18'
+  },
+  {
+    id: 'gal-p2',
+    url: 'https://images.unsplash.com/photo-1544698310-74ea9d1c8258?auto=format&fit=crop&q=80&w=800&h=600',
+    title: 'Inter-School Soccer Triumph',
+    description: 'The moment of celebration after scoring the winning penalty during the Jalah regional athletic qualifiers.',
+    uploaderName: 'Coach Athletic Staff',
+    classId: 'Class-IX',
+    category: 'Sports',
+    uploadDate: '2026-06-02'
+  },
+  {
+    id: 'gal-p3',
+    url: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&q=80&w=800&h=600',
+    title: 'Socrates Philosophy & Debate Society',
+    description: 'Team leaders debating current socio-economic development metrics at our central administrative amphitheater.',
+    uploaderName: 'David Alroy (Debate Instructor)',
+    classId: 'Class-X',
+    category: 'Academics',
+    uploadDate: '2026-04-10'
+  },
+  {
+    id: 'gal-p4',
+    url: 'https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?auto=format&fit=crop&q=80&w=800&h=600',
+    title: 'Watercolor Sketching Workshop',
+    description: 'Vibrant sketches, landscapes, and custom design portraits made during the primary Division spring arts cluster.',
+    uploaderName: 'Auxiliary Art Assistant',
+    classId: 'Class-V',
+    category: 'Art',
+    uploadDate: '2026-06-11'
+  },
+  {
+    id: 'gal-p5',
+    url: recreationalTurfImg,
+    title: 'Fresh Turf Play Hours',
+    description: 'Energetic Class VIII students enjoying outdoor competitive running tasks and field sports routines.',
+    uploaderName: 'CDPSJ Registrar Cell',
+    classId: 'Class-VIII',
+    category: 'Sports',
+    uploadDate: '2026-06-12'
+  }
 ];
 
 const TEACHER_VACANCIES = [
@@ -224,7 +289,7 @@ interface PublicWebsiteProps {
 }
 
 export default function PublicWebsite({ onLoginClick }: PublicWebsiteProps) {
-  const [activeSection, setActiveSection] = useState<'home' | 'about' | 'academics' | 'students' | 'teachers' | 'admissions' | 'contact'>('home');
+  const [activeSection, setActiveSection] = useState<'home' | 'about' | 'academics' | 'students' | 'teachers' | 'admissions' | 'contact' | 'gallery'>('home');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Student Hub state
@@ -267,6 +332,156 @@ export default function PublicWebsite({ onLoginClick }: PublicWebsiteProps) {
   const [parentEmail, setParentEmail] = useState('');
   const [parentPhone, setParentPhone] = useState('');
   const [admissionsSubmitted, setAdmissionsSubmitted] = useState(false);
+
+  // === STUDENT GALLERY & PHOTO UPLOAD STATE ===
+  const [userUploadedPhotos, setUserUploadedPhotos] = useState<any[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('zenith_student_gallery') || '[]');
+    } catch {
+      return [];
+    }
+  });
+  const [gallerySearchQuery, setGallerySearchQuery] = useState('');
+  const [selectedGalleryCategory, setSelectedGalleryCategory] = useState<string>('All');
+  const [selectedGalleryClass, setSelectedGalleryClass] = useState<string>('All');
+  const [selectedLightboxPhoto, setSelectedLightboxPhoto] = useState<any | null>(null);
+  
+  // Upload inputs
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadStudentName, setUploadStudentName] = useState('');
+  const [uploadPhotoTitle, setUploadPhotoTitle] = useState('');
+  const [uploadPhotoDesc, setUploadPhotoDesc] = useState('');
+  const [uploadPhotoClass, setUploadPhotoClass] = useState('Class-X');
+  const [uploadPhotoCategory, setUploadPhotoCategory] = useState('Science');
+  const [uploadPhotoFileBase64, setUploadPhotoFileBase64] = useState('');
+  const [dragActiveGallery, setDragActiveGallery] = useState(false);
+  const [galleryUploadSuccess, setGalleryUploadSuccess] = useState('');
+  const [galleryUploadError, setGalleryUploadError] = useState('');
+
+  // Handle Drag Events
+  const handleDragGallery = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActiveGallery(true);
+    } else if (e.type === "dragleave") {
+      setDragActiveGallery(false);
+    }
+  };
+
+  // Convert uploaded image to Base64
+  const processImageFile = (file: File) => {
+    if (file.size > 2 * 1024 * 1024) { // 2MB limit check
+      setGalleryUploadError('Please select a photo smaller than 2MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setUploadPhotoFileBase64(reader.result as string);
+      setGalleryUploadError('');
+    };
+    reader.onerror = () => {
+      setGalleryUploadError('Failed to read image file.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDropGallery = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActiveGallery(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      processImageFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handlePhotoUploadSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setGalleryUploadError('');
+    setGalleryUploadSuccess('');
+
+    if (!uploadStudentName.trim() || !uploadPhotoTitle.trim() || !uploadPhotoDesc.trim()) {
+      setGalleryUploadError('Please populate all fields (Student Name, Title, and Description).');
+      return;
+    }
+
+    if (!uploadPhotoFileBase64) {
+      setGalleryUploadError('Please drag & drop or select a student photo to upload.');
+      return;
+    }
+
+    try {
+      const newPhotoObj = {
+        id: `gal-user-${Date.now()}`,
+        url: uploadPhotoFileBase64,
+        title: uploadPhotoTitle.trim(),
+        description: uploadPhotoDesc.trim(),
+        uploaderName: uploadStudentName.trim(),
+        classId: uploadPhotoClass,
+        category: uploadPhotoCategory,
+        uploadDate: new Date().toISOString().split('T')[0],
+        isUserUploaded: true
+      };
+
+      const updated = [newPhotoObj, ...userUploadedPhotos];
+      setUserUploadedPhotos(updated);
+      localStorage.setItem('zenith_student_gallery', JSON.stringify(updated));
+
+      setGalleryUploadSuccess('Success! Photo added to Student Gallery.');
+      
+      // Reset upload states after a brief success display delay
+      setTimeout(() => {
+        setUploadStudentName('');
+        setUploadPhotoTitle('');
+        setUploadPhotoDesc('');
+        setUploadPhotoFileBase64('');
+        setGalleryUploadSuccess('');
+        setShowUploadModal(false);
+      }, 1500);
+
+    } catch (err) {
+      setGalleryUploadError('Failed to save to local storage. Your image may be too large.');
+    }
+  };
+
+  const handleDeleteUserPhoto = (photoId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Avoid triggering lightbox click
+    if (window.confirm('Are you sure you want to delete this photo from the gallery?')) {
+      const updated = userUploadedPhotos.filter(p => p.id !== photoId);
+      setUserUploadedPhotos(updated);
+      localStorage.setItem('zenith_student_gallery', JSON.stringify(updated));
+    }
+  };
+
+  // Combine static presets with user uploaded photos
+  const allGalleryPhotos = [...userUploadedPhotos, ...INITIAL_PRESET_GALLERY];
+
+  // Apply filters
+  const filteredGalleryPhotos = allGalleryPhotos.filter(item => {
+    const matchesSearch = 
+      item.title.toLowerCase().includes(gallerySearchQuery.toLowerCase()) ||
+      item.description.toLowerCase().includes(gallerySearchQuery.toLowerCase()) ||
+      item.uploaderName.toLowerCase().includes(gallerySearchQuery.toLowerCase()) ||
+      item.classId.toLowerCase().includes(gallerySearchQuery.toLowerCase());
+
+    const matchesCategory = 
+      selectedGalleryCategory === 'All' || 
+      item.category.toLowerCase() === selectedGalleryCategory.toLowerCase();
+
+    // Grouping classes for quick class filters
+    let matchesClassGroup = true;
+    if (selectedGalleryClass !== 'All') {
+      if (selectedGalleryClass === 'KG') {
+        matchesClassGroup = item.classId.includes('KG') || item.classId.includes('Kindergarten');
+      } else if (selectedGalleryClass === 'Primary') {
+        matchesClassGroup = item.classId.includes('Class-I') || item.classId.includes('Class-II') || item.classId.includes('Class-III') || item.classId.includes('Class-IV') || item.classId.includes('Class-V');
+      } else if (selectedGalleryClass === 'Secondary') {
+        matchesClassGroup = item.classId.includes('Class-VI') || item.classId.includes('Class-VII') || item.classId.includes('Class-VIII') || item.classId.includes('Class-IX') || item.classId.includes('Class-X');
+      }
+    }
+
+    return matchesSearch && matchesCategory && matchesClassGroup;
+  });
 
   const announcements = getAnnouncements().filter(a => a.target === 'all');
   const syllabi = getSyllabus();
@@ -385,7 +600,7 @@ export default function PublicWebsite({ onLoginClick }: PublicWebsiteProps) {
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-1" id="nav-desktop-links">
-            {(['home', 'about', 'academics', 'students', 'teachers', 'admissions', 'contact'] as const).map((sec) => (
+            {(['home', 'about', 'academics', 'students', 'teachers', 'admissions', 'gallery', 'contact'] as const).map((sec) => (
               <button
                 key={sec}
                 id={`btn-nav-${sec}`}
@@ -406,7 +621,7 @@ export default function PublicWebsite({ onLoginClick }: PublicWebsiteProps) {
             <button 
               onClick={onLoginClick}
               id="btn-portal-login"
-              className="bg-indigo-650 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl shadow-md shadow-indigo-150 transition-all flex items-center gap-2 hover:translate-y-[-1px]"
+              className="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl shadow-md shadow-red-200 transition-all flex items-center gap-2 hover:translate-y-[-1px]"
             >
               School Portal Login <ArrowRight className="w-4 h-4" />
             </button>
@@ -436,7 +651,7 @@ export default function PublicWebsite({ onLoginClick }: PublicWebsiteProps) {
               id="mobile-navigation-drawer"
             >
               <div className="px-4 py-3 space-y-1">
-                {(['home', 'about', 'academics', 'students', 'teachers', 'admissions', 'contact'] as const).map((sec) => (
+                {(['home', 'about', 'academics', 'students', 'teachers', 'admissions', 'gallery', 'contact'] as const).map((sec) => (
                   <button
                     key={sec}
                     onClick={() => {
@@ -458,7 +673,7 @@ export default function PublicWebsite({ onLoginClick }: PublicWebsiteProps) {
                       setMobileMenuOpen(false);
                       onLoginClick();
                     }}
-                    className="w-full text-center bg-indigo-650 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl shadow-md flex items-center justify-center gap-2"
+                    className="w-full text-center bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-xl shadow-md flex items-center justify-center gap-2"
                   >
                     School Portal Login <ArrowRight className="w-4 h-4" />
                   </button>
@@ -693,7 +908,7 @@ export default function PublicWebsite({ onLoginClick }: PublicWebsiteProps) {
                       id: 'gallery-facility-4',
                       title: 'Recreational Turf & Courts',
                       description: 'Immersive green sports turf, competitive running tracks, outdoor play sectors, and basketball courts.',
-                      image: 'https://images.unsplash.com/photo-1517649763962-0c623066013b?auto=format&fit=crop&q=80&w=600&h=450',
+                      image: recreationalTurfImg,
                       badge: 'Athletics & Play'
                     }
                   ].map((item) => (
@@ -792,10 +1007,15 @@ export default function PublicWebsite({ onLoginClick }: PublicWebsiteProps) {
               {/* Principal Message card */}
               <div className="bg-white border border-slate-150 p-8 rounded-2xl shadow-sm grid grid-cols-1 md:grid-cols-12 gap-8 items-center" id="principal-message">
                 <div className="md:col-span-3 text-center">
-                  <div className="w-24 h-24 bg-indigo-100 rounded-full mx-auto flex items-center justify-center text-slate-500 mb-3 border border-indigo-200 font-bold text-2xl">
-                    PM
+                  <div className="w-24 h-24 rounded-full mx-auto mb-3 overflow-hidden border border-slate-200 shadow-sm bg-slate-50 flex items-center justify-center">
+                    <img 
+                      src={principalAmarendraBoroImg} 
+                      alt="AMARENDRA BORO" 
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
+                    />
                   </div>
-                  <span className="font-bold text-slate-900 block text-lg">Prof. Pamela Moore</span>
+                  <span className="font-bold text-slate-900 block text-lg">AMARENDRA BORO</span>
                   <span className="text-xs text-indigo-650 font-semibold uppercase tracking-wider block">Principal Officer, CDPSJ</span>
                 </div>
                 <div className="md:col-span-9 space-y-4">
@@ -1890,6 +2110,480 @@ export default function PublicWebsite({ onLoginClick }: PublicWebsiteProps) {
             </motion.div>
           )}
 
+          {/* 6. STUDENT MEMORIES GALLERY SECTION */}
+          {activeSection === 'gallery' && (
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.3 }}
+              className="max-w-7xl mx-auto px-4 py-16 space-y-12"
+              key="view-gallery"
+            >
+              {/* Gallery Header */}
+              <div className="text-center space-y-4">
+                <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-100 text-indigo-700 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest shadow-sm">
+                  <Camera className="w-4 h-4 text-indigo-600 animate-pulse" />
+                  CDPSJ Student Life Gallery
+                </div>
+                <h2 className="text-4xl font-extrabold text-slate-900 tracking-tight font-display">
+                  Capturing Moments, Nurturing Memories
+                </h2>
+                <p className="text-slate-600 max-w-2xl mx-auto text-sm leading-relaxed">
+                  Celebrate our active classroom workshops, robotic exhibitions, cultural events, and competitive athletic qualifiers. Students, guardians, and teachers are welcome to capture and share active student memories on our digital board.
+                </p>
+                <div className="w-16 h-1.5 bg-red-650 mx-auto rounded-full"></div>
+              </div>
+
+              {/* Toolbar: Search, Filters, and Upload Trigger */}
+              <div className="bg-white border border-slate-150 p-6 rounded-2xl shadow-sm space-y-6">
+                <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+                  {/* Search bar */}
+                  <div className="relative w-full md:w-96">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
+                    <input
+                      type="text"
+                      className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                      placeholder="Search by title, student name, class..."
+                      value={gallerySearchQuery}
+                      onChange={(e) => setGallerySearchQuery(e.target.value)}
+                    />
+                    {gallerySearchQuery && (
+                      <button
+                        onClick={() => setGallerySearchQuery('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 font-semibold"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Upload Action Button */}
+                  <button
+                    onClick={() => {
+                      setGalleryUploadError('');
+                      setGalleryUploadSuccess('');
+                      setShowUploadModal(true);
+                    }}
+                    className="w-full md:w-auto bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 hover:translate-y-[-1px] cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" /> Upload Student Photo
+                  </button>
+                </div>
+
+                {/* Tag & Filters Cluster */}
+                <div className="border-t border-slate-100 pt-5 flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
+                  {/* Category Filter */}
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    <Filter className="w-3.5 h-3.5 text-slate-400 mr-2" />
+                    <span className="text-xs text-slate-500 font-semibold mr-1">Activity Category:</span>
+                    {['All', 'Sports', 'Academics', 'Art', 'Science'].map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => setSelectedGalleryCategory(cat)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          selectedGalleryCategory === cat
+                            ? 'bg-indigo-650 text-white shadow-sm'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {cat === 'All' ? 'All Activities' : cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Grade/Class Filter */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-slate-500 font-semibold">Grade Scope:</span>
+                    <select
+                      className="border border-slate-200 bg-slate-50/50 text-xs font-semibold rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
+                      value={selectedGalleryClass}
+                      onChange={(e) => setSelectedGalleryClass(e.target.value)}
+                    >
+                      <option value="All">All Divisions</option>
+                      <option value="KG">Kindergarten</option>
+                      <option value="Primary">Primary (Classes I - V)</option>
+                      <option value="Secondary">Secondary (Classes VI - X)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Photos Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                {filteredGalleryPhotos.map((photo) => (
+                  <motion.div
+                    key={photo.id}
+                    layoutId={`gallery-item-${photo.id}`}
+                    onClick={() => setSelectedLightboxPhoto(photo)}
+                    className="bg-white border border-slate-150 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-shadow duration-300 group cursor-pointer relative"
+                  >
+                    {/* Category Label Overlay */}
+                    <div className="absolute top-4 left-4 z-10 flex gap-2">
+                      <span className="bg-slate-900/80 backdrop-blur-md text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg">
+                        {photo.category}
+                      </span>
+                      {photo.isUserUploaded && (
+                        <span className="bg-red-600 text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg shadow-sm animate-pulse">
+                          Student Upload
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Manage uploaded photo trigger */}
+                    {photo.isUserUploaded && (
+                      <button
+                        onClick={(e) => handleDeleteUserPhoto(photo.id, e)}
+                        className="absolute top-4 right-4 z-20 p-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg hover:text-red-700 hover:scale-105 transition-all shadow-md cursor-pointer"
+                        title="Remove student photo"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+
+                    {/* Image Area */}
+                    <div className="aspect-[4/3] overflow-hidden bg-slate-100 relative">
+                      <img
+                        src={photo.url}
+                        alt={photo.title}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    </div>
+
+                    {/* Meta section */}
+                    <div className="p-5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-indigo-650 bg-indigo-50 font-bold px-2.5 py-0.5 rounded-lg">
+                          {photo.classId}
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-medium font-mono">
+                          {photo.uploadDate}
+                        </span>
+                      </div>
+
+                      <h3 className="font-bold text-slate-900 leading-snug group-hover:text-indigo-650 transition-colors">
+                        {photo.title}
+                      </h3>
+
+                      <p className="text-slate-600 text-xs line-clamp-2 leading-relaxed">
+                        {photo.description}
+                      </p>
+
+                      <div className="border-t border-slate-100 pt-3 mt-2 flex items-center justify-between text-[11px] text-slate-500">
+                        <span>Submitted by:</span>
+                        <span className="font-bold text-slate-700 truncate max-w-[150px]">
+                          {photo.uploaderName}
+                        </span>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* No items matched state */}
+              {filteredGalleryPhotos.length === 0 && (
+                <div className="text-center py-16 bg-white border border-slate-150 rounded-2xl gap-2 flex flex-col items-center max-w-xl mx-auto shadow-sm">
+                  <ImageIcon className="w-12 h-12 text-slate-300" />
+                  <h3 className="text-lg font-bold text-slate-800 font-display">No gallery moments match</h3>
+                  <p className="text-slate-500 text-xs px-8 leading-relaxed">
+                    We could not find student photos matching "{gallerySearchQuery}" or chosen activity categories/grades. Share the first high-school memory now!
+                  </p>
+                  <button
+                    onClick={() => {
+                      setGallerySearchQuery('');
+                      setSelectedGalleryCategory('All');
+                      setSelectedGalleryClass('All');
+                    }}
+                    className="mt-4 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Reset Filter Parameters
+                  </button>
+                </div>
+              )}
+
+              {/* UPLOAD student photo pops modal */}
+              <AnimatePresence>
+                {showUploadModal && (
+                  <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                    <motion.div
+                      initial={{ scale: 0.95, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.95, opacity: 0 }}
+                      className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl border border-slate-100"
+                    >
+                      <div className="p-6 bg-slate-950 text-white flex items-center justify-between">
+                        <div>
+                          <h3 className="text-xl font-bold font-display">Share a School Moment</h3>
+                          <p className="text-slate-450 text-xs mt-0.5">Upload verified student sports milestones, lab tests, or craft work</p>
+                        </div>
+                        <button
+                          onClick={() => setShowUploadModal(false)}
+                          className="p-1.5 bg-white/10 hover:bg-white/20 text-white/80 hover:text-white rounded-xl transition-all cursor-pointer"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      <form onSubmit={handlePhotoUploadSubmit} className="p-6 space-y-6">
+                        {/* Error Callouts */}
+                        {galleryUploadError && (
+                          <div className="p-4 bg-rose-50 border border-rose-150 rounded-xl text-rose-700 text-xs font-medium">
+                            {galleryUploadError}
+                          </div>
+                        )}
+                        {galleryUploadSuccess && (
+                          <div className="p-4 bg-emerald-50 border border-emerald-150 rounded-xl text-emerald-800 text-xs font-bold">
+                            {galleryUploadSuccess}
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {/* Student Submitter Name */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Student or Instructor Name</label>
+                            <input
+                              type="text"
+                              className="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
+                              placeholder="e.g. Amarendra Boro"
+                              value={uploadStudentName}
+                              onChange={(e) => setUploadStudentName(e.target.value)}
+                              required
+                            />
+                          </div>
+
+                          {/* Class Selector */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Student Class / Grade</label>
+                            <select
+                              className="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 text-slate-705"
+                              value={uploadPhotoClass}
+                              onChange={(e) => setUploadPhotoClass(e.target.value)}
+                            >
+                              <option value="LKG">LKG (Lower Kindergarten)</option>
+                              <option value="UKG">UKG (Upper Kindergarten)</option>
+                              <option value="Class-I">Class I (Primary Division)</option>
+                              <option value="Class-III">Class III (Primary Division)</option>
+                              <option value="Class-V">Class V (Primary Division)</option>
+                              <option value="Class-VIII">Class VIII (Secondary Division)</option>
+                              <option value="Class-IX">Class IX (Secondary Division)</option>
+                              <option value="Class-X">Class X (Secondary Board)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {/* Title of Memory */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Moment/Photo Title</label>
+                            <input
+                              type="text"
+                              className="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
+                              placeholder="e.g. Science Exhibition Winner"
+                              value={uploadPhotoTitle}
+                              onChange={(e) => setUploadPhotoTitle(e.target.value)}
+                              required
+                            />
+                          </div>
+
+                          {/* Category */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Activity Category</label>
+                            <select
+                              className="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 text-slate-705"
+                              value={uploadPhotoCategory}
+                              onChange={(e) => setUploadPhotoCategory(e.target.value)}
+                            >
+                              <option value="Science">Science & Lab Projects</option>
+                              <option value="Sports">Sports & Physical Play</option>
+                              <option value="Art">Art & Craft Exhibitions</option>
+                              <option value="Academics">Academics & Debate</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Description Textarea */}
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Brief Description / Story</label>
+                          <textarea
+                            rows={2}
+                            maxLength={250}
+                            className="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 leading-relaxed"
+                            placeholder="Share some context about what activities are students doing here... (Max 250 characters)"
+                            value={uploadPhotoDesc}
+                            onChange={(e) => setUploadPhotoDesc(e.target.value)}
+                            required
+                          />
+                        </div>
+
+                        {/* Drag and Drop Zone Container */}
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Photo File (Max 2MB)</label>
+                          
+                          <div
+                            onDragEnter={handleDragGallery}
+                            onDragOver={handleDragGallery}
+                            onDragLeave={handleDragGallery}
+                            onDrop={handleDropGallery}
+                            className={`border-2 border-dashed rounded-2xl p-6 text-center transition-all flex flex-col items-center justify-center cursor-pointer ${
+                              dragActiveGallery 
+                                ? 'border-indigo-500 bg-indigo-50' 
+                                : uploadPhotoFileBase64 
+                                  ? 'border-emerald-300 bg-emerald-50/20' 
+                                  : 'border-slate-200 hover:border-indigo-400 bg-slate-50'
+                            }`}
+                            onClick={() => {
+                              const inputEl = document.getElementById('gallery-file-field');
+                              if (inputEl) inputEl.click();
+                            }}
+                          >
+                            <input
+                              type="file"
+                              id="gallery-file-field"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files[0]) {
+                                  processImageFile(e.target.files[0]);
+                                }
+                              }}
+                            />
+
+                            {uploadPhotoFileBase64 ? (
+                              <div className="space-y-3">
+                                <div className="w-24 h-16 rounded-lg overflow-hidden border border-emerald-150 mx-auto bg-slate-100 shadow-sm">
+                                  <img 
+                                    src={uploadPhotoFileBase64} 
+                                    alt="Preview" 
+                                    className="w-full h-full object-cover" 
+                                  />
+                                </div>
+                                <div>
+                                  <span className="text-emerald-700 text-xs font-bold block">✓ Photo Selected & Compressed</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setUploadPhotoFileBase64('');
+                                    }}
+                                    className="text-[10px] text-red-500 underline font-semibold mt-1"
+                                  >
+                                    Remove selected file
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <ImageIcon className="w-10 h-10 text-slate-400 mx-auto" />
+                                <div>
+                                  <span className="text-sm font-bold text-indigo-600 hover:underline">Click to browse</span> or drag and drop image here
+                                </div>
+                                <span className="text-[10px] text-slate-400 font-medium block">PNG, JPG, or WEBP under 2 Megabytes</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Footer Form Toggles */}
+                        <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => setShowUploadModal(false)}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-650 px-5 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                          >
+                            Close Form
+                          </button>
+                          <button
+                            type="submit"
+                            className="bg-indigo-650 hover:bg-slate-900 text-white px-6 py-2 rounded-xl text-xs font-bold shadow transition-all hover:scale-[1.01] cursor-pointer"
+                          >
+                            Submit to Gallery
+                          </button>
+                        </div>
+                      </form>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+
+              {/* Lightbox / Zoom full details popup dialog */}
+              <AnimatePresence>
+                {selectedLightboxPhoto && (
+                  <div 
+                    className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4"
+                    onClick={() => setSelectedLightboxPhoto(null)}
+                  >
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      onClick={(e) => e.stopPropagation()} // Stop closing on click
+                      className="bg-white rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col md:flex-row border border-slate-800"
+                    >
+                      {/* Left: Interactive Image display */}
+                      <div className="flex-1 bg-slate-900 relative min-h-[300px] md:min-h-[450px] flex items-center justify-center p-2">
+                        <img
+                          src={selectedLightboxPhoto.url}
+                          alt={selectedLightboxPhoto.title}
+                          className="max-h-[70vh] object-contain rounded-lg"
+                        />
+                        <button
+                          onClick={() => setSelectedLightboxPhoto(null)}
+                          className="absolute top-4 left-4 p-2 bg-black/60 hover:bg-black/80 text-white rounded-xl transition-colors cursor-pointer"
+                        >
+                          ✕ Close View
+                        </button>
+                      </div>
+
+                      {/* Right: Metadata Panel descriptions */}
+                      <div className="w-full md:w-96 p-6 flex flex-col justify-between bg-slate-50 space-y-6">
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-2">
+                            <span className="bg-indigo-650 text-white text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-lg">
+                              {selectedLightboxPhoto.category}
+                            </span>
+                            <span className="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-2.5 py-1 rounded-lg">
+                              {selectedLightboxPhoto.classId}
+                            </span>
+                          </div>
+
+                          <h3 className="text-xl font-extrabold text-slate-900 leading-snug font-display">
+                            {selectedLightboxPhoto.title}
+                          </h3>
+
+                          <div className="w-10 bg-indigo-650 h-1 rounded"></div>
+
+                          <p className="text-slate-650 text-xs leading-relaxed font-sans">
+                            {selectedLightboxPhoto.description}
+                          </p>
+                        </div>
+
+                        <div className="border-t border-slate-200/80 pt-5 space-y-2">
+                          <div className="flex justify-between text-xs text-slate-500">
+                            <span>Photographer/Uploader:</span>
+                            <span className="font-bold text-slate-800 truncate max-w-[170px]">
+                              {selectedLightboxPhoto.uploaderName}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-xs text-slate-500">
+                            <span>Uploaded Date:</span>
+                            <span className="font-semibold text-slate-600 font-mono">
+                              {selectedLightboxPhoto.uploadDate}
+                            </span>
+                          </div>
+                          <div className="pt-2 text-center text-[10px] text-slate-400 font-medium">
+                            © Chakrapani Das Public School Jalah Student Activities Register.
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+
+            </motion.div>
+          )}
+
         </AnimatePresence>
       </main>
 
@@ -1909,8 +2603,9 @@ export default function PublicWebsite({ onLoginClick }: PublicWebsiteProps) {
               <li><button onClick={() => setActiveSection('students')} className="hover:text-white transition-colors cursor-pointer">Student Hub Resources</button></li>
               <li><button onClick={() => setActiveSection('teachers')} className="hover:text-white transition-colors cursor-pointer">Teacher Hub Opportunities</button></li>
               <li><button onClick={() => setActiveSection('admissions')} className="hover:text-white transition-colors cursor-pointer">Admission Form</button></li>
+              <li><button onClick={() => setActiveSection('gallery')} className="hover:text-white transition-colors cursor-pointer text-indigo-400">Student Memories Gallery</button></li>
               <li><button onClick={() => setActiveSection('about')} className="hover:text-white transition-colors cursor-pointer">School History & Mission</button></li>
-              <li><button onClick={onLoginClick} className="hover:text-white transition-colors text-indigo-450 cursor-pointer">Academy Portal Access</button></li>
+              <li><button onClick={onLoginClick} className="hover:text-white transition-colors text-red-400 font-bold cursor-pointer">Academy Portal Access</button></li>
             </ul>
           </div>
           <div>
